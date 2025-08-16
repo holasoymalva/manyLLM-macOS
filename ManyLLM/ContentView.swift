@@ -96,10 +96,39 @@ struct ContentView: View {
                 HStack(spacing: 16) {
                     // ManyLLM Logo/Brand
                     HStack(spacing: 8) {
-                        // Cat-bee logo placeholder (using SF Symbol for now)
-                        Image(systemName: "pawprint.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.orange)
+                        // Cat-bee logo (compact version)
+                        ZStack {
+                            Circle()
+                                .fill(.orange.gradient)
+                                .frame(width: 20, height: 20)
+                            
+                            // Simple cat face
+                            VStack(spacing: 1) {
+                                // Ears
+                                HStack(spacing: 4) {
+                                    Circle().fill(.white).frame(width: 2, height: 2)
+                                    Circle().fill(.white).frame(width: 2, height: 2)
+                                }
+                                .offset(y: -2)
+                                
+                                // Eyes and nose
+                                VStack(spacing: 0.5) {
+                                    HStack(spacing: 2) {
+                                        Circle().fill(.black).frame(width: 1.5, height: 1.5)
+                                        Circle().fill(.black).frame(width: 1.5, height: 1.5)
+                                    }
+                                    Circle().fill(.black).frame(width: 1, height: 1)
+                                }
+                                .offset(y: -1)
+                            }
+                            
+                            // Bee stripes
+                            VStack(spacing: 2) {
+                                Rectangle().fill(.black).frame(width: 12, height: 1)
+                                Rectangle().fill(.black).frame(width: 12, height: 1)
+                            }
+                            .offset(y: 2)
+                        }
                         
                         Text("ManyLLM")
                             .font(.system(size: 16, weight: .semibold))

@@ -116,12 +116,84 @@ struct WelcomeView: View {
         VStack(spacing: 24) {
             Spacer()
             
-            // ManyLLM Cat-bee Logo (placeholder with SF Symbol)
+            // ManyLLM Cat-bee Logo (creative SF Symbol combination)
             VStack(spacing: 16) {
-                Image(systemName: "pawprint.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.orange)
-                    .shadow(color: .orange.opacity(0.3), radius: 8, x: 0, y: 4)
+                ZStack {
+                    // Base circle for the cat face
+                    Circle()
+                        .fill(.orange.gradient)
+                        .frame(width: 80, height: 80)
+                        .shadow(color: .orange.opacity(0.3), radius: 8, x: 0, y: 4)
+                    
+                    // Cat face elements
+                    VStack(spacing: 4) {
+                        // Cat ears (using triangular shapes)
+                        HStack(spacing: 20) {
+                            Image(systemName: "triangle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.white)
+                                .rotationEffect(.degrees(45))
+                            Image(systemName: "triangle.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.white)
+                                .rotationEffect(.degrees(-45))
+                        }
+                        .offset(y: -8)
+                        
+                        // Cat face
+                        VStack(spacing: 2) {
+                            // Eyes
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(.black)
+                                    .frame(width: 4, height: 4)
+                                Circle()
+                                    .fill(.black)
+                                    .frame(width: 4, height: 4)
+                            }
+                            
+                            // Nose and mouth
+                            VStack(spacing: 1) {
+                                Image(systemName: "triangle.fill")
+                                    .font(.system(size: 6))
+                                    .foregroundColor(.black)
+                                
+                                // Simple smile
+                                Path { path in
+                                    path.move(to: CGPoint(x: -6, y: 0))
+                                    path.addQuadCurve(to: CGPoint(x: 6, y: 0), control: CGPoint(x: 0, y: 4))
+                                }
+                                .stroke(.black, lineWidth: 1)
+                                .frame(width: 12, height: 4)
+                            }
+                        }
+                        .offset(y: -2)
+                    }
+                    
+                    // Bee wings (subtle)
+                    HStack(spacing: 60) {
+                        Image(systemName: "oval.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.7))
+                            .rotationEffect(.degrees(-20))
+                        Image(systemName: "oval.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.7))
+                            .rotationEffect(.degrees(20))
+                    }
+                    .offset(y: 5)
+                    
+                    // Bee stripes
+                    VStack(spacing: 8) {
+                        Rectangle()
+                            .fill(.black)
+                            .frame(width: 50, height: 3)
+                        Rectangle()
+                            .fill(.black)
+                            .frame(width: 50, height: 3)
+                    }
+                    .offset(y: 10)
+                }
                 
                 VStack(spacing: 8) {
                     Text("Welcome to ManyLLM Preview")
