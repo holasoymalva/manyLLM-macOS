@@ -1,302 +1,10 @@
 import SwiftUI
 
-struct ContentView: View {
-    @State private var sidebarCollapsed = false
-    @State private var workspacesExpanded = true
-    @State private var filesExpanded = true
-    @State private var selectedModel = "Llama 3 8B Ollama"
-    @State private var temperature: Double = 0.7
-    @State private var maxTokens: Double = 600
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            // Left Sidebar
-            if !sidebarCollapsed {
-                VStack(spacing: 0) {
-                    // Workspaces Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Button(action: { workspacesExpanded.toggle() }) {
-                                Image(systemName: workspacesExpanded ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Text("Workspaces")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.primary)
-                            
-                            Spacer()
-                            
-                            Button(action: {}) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 12)
-                        
-                        if workspacesExpanded {
-                            VStack(alignment: .leading, spacing: 4) {
-                                WorkspaceItem(name: "Current Chat", isSelected: true)
-                                WorkspaceItem(name: "Research Project", isSelected: false)
-                                WorkspaceItem(name: "Code Review", isSelected: false)
-                            }
-                            .padding(.horizontal, 8)
-                        }
-                    }
-                    
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    // Files Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Button(action: { filesExpanded.toggle() }) {
-                                Image(systemName: filesExpanded ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Text("Files")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.primary)
-                            
-                            Spacer()
-                            
-                            Text("2 of 3 files in context")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.horizontal, 12)
-                        
-                        if filesExpanded {
-                            VStack(alignment: .leading, spacing: 4) {
-                                FileItem(name: "document.pdf", size: "2.3 MB", hasContext: true)
-                                FileItem(name: "notes.txt", size: "45 KB", hasContext: true)
-                                FileItem(name: "data.csv", size: "1.1 MB", hasContext: false)
-                            }
-                            .padding(.horizontal, 8)
-                        }
-                    }
-                    
-                    Spacer()
-                }
-                .frame(width: 250)
-                .background(Color(NSColor.controlBackgroundColor))
-            }
-            
-            // Main Content Area
-            VStack(spacing: 0) {
-                // Top Toolbar
-                HStack(spacing: 16) {
-                    // ManyLLM Logo/Brand
-                    HStack(spacing: 8) {
-                        // Cat-bee logo placeholder (using SF Symbol for now)
-                        Image(systemName: "pawprint.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.orange)
-                        
-                        Text("ManyLLM")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
-                    }
-                    
-                    Spacer()
-                    
-                    // Model Dropdown
-                    Menu {
-                        Button("Llama 3 8B Ollama") { selectedModel = "Llama 3 8B Ollama" }
-                        Button("GPT-4 Compatible") { selectedModel = "GPT-4 Compatible" }
-                        Button("Browse Models...") { }
-                    } label: {
-                        HStack {
-                            Text(selectedModel)
-                                .font(.system(size: 13))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10))
-                        }
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(6)
-                    }
-                    
-                    // Temperature Slider
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Temperature")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        HStack {
-                            Slider(value: $temperature, in: 0...2.0, step: 0.1)
-                                .frame(width: 80)
-                            Text(String(format: "%.1f", temperature))
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .frame(width: 30, alignment: .trailing)
-                        }
-                    }
-                    
-                    // Max Tokens Slider
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Max Tokens")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        HStack {
-                            Slider(value: $maxTokens, in: 1...2048, step: 1)
-                                .frame(width: 80)
-                            Text("\(Int(maxTokens))")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .frame(width: 40, alignment: .trailing)
-                        }
-                    }
-                    
-                    // Settings Gear
-                    Button(action: {}) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    // Start Button
-                    Button("Start") {
-                        // TODO: Implement start functionality
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color(NSColor.windowBackgroundColor))
-                .overlay(
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundColor(Color(NSColor.separatorColor)),
-                    alignment: .bottom
-                )
-                
-                // Chat Interface
-                ChatView()
-            }
-        }
-        .frame(minWidth: 800, minHeight: 600)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: { sidebarCollapsed.toggle() }) {
-                    Image(systemName: "sidebar.left")
-                }
-            }
-        }
-    }
-}
-
-#Preview {
-    ContentView()
-}
-// MARK: - Supporting Views
-
-struct WorkspaceItem: View {
-    let name: String
-    let isSelected: Bool
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            
-            Text(name)
-                .font(.system(size: 12))
-                .foregroundColor(isSelected ? .primary : .secondary)
-            
-            Spacer()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-        .cornerRadius(4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // TODO: Handle workspace selection
-        }
-    }
-}
-
-struct FileItem: View {
-    let name: String
-    let size: String
-    let hasContext: Bool
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: fileIcon(for: name))
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name)
-                    .font(.system(size: 12))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                
-                Text(size)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            if hasContext {
-                Image(systemName: "eye.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(.accentColor)
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // TODO: Handle file selection
-        }
-    }
-    
-    private func fileIcon(for filename: String) -> String {
-        let ext = (filename as NSString).pathExtension.lowercased()
-        switch ext {
-        case "pdf":
-            return "doc.richtext"
-        case "txt":
-            return "doc.text"
-        case "csv":
-            return "tablecells"
-        case "docx", "doc":
-            return "doc"
-        default:
-            return "doc"
-        }
-    }
-}
-
-// MARK: - Chat Interface Components
-
-// Simple message structure for demo purposes
-struct SimpleChatMessage: Identifiable {
-    let id = UUID()
-    let content: String
-    let isUser: Bool
-    let timestamp = Date()
-}
+// MARK: - Main Chat View
 
 /// Main chat interface view that displays messages and handles user input
 struct ChatView: View {
-    @State private var messages: [SimpleChatMessage] = []
+    @State private var messages: [ChatMessage] = []
     @State private var messageText = ""
     @State private var isProcessing = false
     @State private var systemPrompt = "Default"
@@ -316,7 +24,7 @@ struct ChatView: View {
                     ScrollView {
                         LazyVStack(spacing: 12) {
                             ForEach(messages) { message in
-                                SimpleMessageBubbleView(message: message)
+                                MessageBubbleView(message: message)
                                     .id(message.id)
                             }
                             
@@ -360,9 +68,12 @@ struct ChatView: View {
         guard !trimmedText.isEmpty && !isProcessing else { return }
         
         // Create user message
-        let userMessage = SimpleChatMessage(
+        let userMessage = ChatMessage(
             content: trimmedText,
-            isUser: true
+            role: .user,
+            metadata: activeDocuments.isEmpty ? nil : MessageMetadata(
+                documentReferences: activeDocuments
+            )
         )
         
         messages.append(userMessage)
@@ -371,9 +82,15 @@ struct ChatView: View {
         
         // Simulate assistant response (will be replaced with actual inference)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            let assistantMessage = SimpleChatMessage(
+            let assistantMessage = ChatMessage(
                 content: generateMockResponse(for: trimmedText),
-                isUser: false
+                role: .assistant,
+                metadata: MessageMetadata(
+                    modelUsed: "Mock Model",
+                    inferenceTime: 1.2,
+                    tokenCount: 45,
+                    documentReferences: activeDocuments.isEmpty ? nil : activeDocuments
+                )
             )
             
             messages.append(assistantMessage)
@@ -390,6 +107,8 @@ struct ChatView: View {
         return responses.randomElement() ?? "Mock response"
     }
 }
+
+// MARK: - Welcome View
 
 /// Welcome state view displayed when no messages are present
 struct WelcomeView: View {
@@ -456,56 +175,171 @@ struct WelcomeView: View {
     }
 }
 
-/// Simplified message bubble view for demo
-struct SimpleMessageBubbleView: View {
-    let message: SimpleChatMessage
+// MARK: - Message Bubble View
+
+/// Message bubble view that displays individual chat messages
+struct MessageBubbleView: View {
+    let message: ChatMessage
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if message.isUser {
+            if message.role == .user {
                 Spacer(minLength: 60)
             }
             
-            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
                 // Message content bubble
-                Text(message.content)
-                    .font(.system(size: 14, design: .default))
-                    .foregroundColor(message.isUser ? .white : .primary)
-                    .multilineTextAlignment(.leading)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(message.isUser ? Color.accentColor : Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(16, corners: message.isUser ? [.topLeft, .topRight, .bottomLeft] : [.topLeft, .topRight, .bottomRight])
-                    .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+                MessageContentView(message: message)
                 
-                // Simple timestamp
-                HStack(spacing: 8) {
-                    Text(message.isUser ? "You" : "Assistant")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                    
-                    Text(formatTime(message.timestamp))
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
+                // Message metadata (timestamp, model info, etc.)
+                MessageMetadataView(message: message)
             }
             
-            if !message.isUser {
+            if message.role == .assistant {
                 Spacer(minLength: 60)
             }
         }
     }
+}
+
+/// The main content bubble for a message
+struct MessageContentView: View {
+    let message: ChatMessage
     
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Document references (if any)
+            if message.hasDocumentReferences {
+                DocumentReferencesView(references: message.metadata?.documentReferences ?? [])
+            }
+            
+            // Message text
+            Text(message.content)
+                .font(.system(size: 14, design: .default))
+                .foregroundColor(message.role == .user ? .white : .primary)
+                .multilineTextAlignment(.leading)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(bubbleBackground)
+        .cornerRadius(16, corners: bubbleCorners)
+        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+    }
+    
+    private var bubbleBackground: some View {
+        Group {
+            if message.role == .user {
+                Color.accentColor
+            } else {
+                Color(NSColor.controlBackgroundColor)
+            }
+        }
+    }
+    
+    private var bubbleCorners: RectCorner {
+        switch message.role {
+        case .user:
+            return [.topLeft, .topRight, .bottomLeft]
+        case .assistant:
+            return [.topLeft, .topRight, .bottomRight]
+        case .system:
+            return .allCorners
+        }
     }
 }
 
+/// View showing document references within a message
+struct DocumentReferencesView: View {
+    let references: [String]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                
+                Text("Referenced documents:")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(references, id: \.self) { reference in
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.turn.down.right")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary)
+                        
+                        Text(reference)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.secondary.opacity(0.1))
+        .cornerRadius(8)
+    }
+}
 
+/// Metadata view showing timestamp and other message info
+struct MessageMetadataView: View {
+    let message: ChatMessage
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            // Role indicator
+            Text(message.role.displayName)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
+            
+            // Timestamp
+            Text(message.formattedTimestamp)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            
+            // Model info (for assistant messages)
+            if message.role == .assistant, let modelUsed = message.metadata?.modelUsed {
+                Text("•")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                
+                Text(modelUsed)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            
+            // Inference time (for assistant messages)
+            if message.role == .assistant, let inferenceTime = message.metadata?.inferenceTime {
+                Text("•")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                
+                Text(String(format: "%.1fs", inferenceTime))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            
+            // Token count (for assistant messages)
+            if message.role == .assistant, let tokenCount = message.metadata?.tokenCount {
+                Text("•")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                
+                Text("\(tokenCount) tokens")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - Chat Input View
 
 /// Bottom input area for typing messages and configuring system prompts
 struct ChatInputView: View {
