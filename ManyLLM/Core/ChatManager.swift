@@ -9,19 +9,28 @@ class ChatManager: ObservableObject {
     
     @Published var messages: [ChatMessage] = []
     @Published var isProcessing: Bool = false
-    @Published var currentInferenceEngine: InferenceEngine?
     @Published var activeDocuments: [ProcessedDocument] = []
     @Published var inferenceParameters = InferenceParameters()
     
     // MARK: - Private Properties
     
     private var streamingTask: Task<Void, Never>?
+    private let engineManager: InferenceEngineManager
+    
+    // MARK: - Computed Properties
+    
+    var currentInferenceEngine: InferenceEngine? {
+        return engineManager.currentEngine
+    }
+    
+    var loadedModel: LoadedModel? {
+        return engineManager.loadedModel
+    }
     
     // MARK: - Initialization
     
-    init() {
-        // Initialize with mock engine for testing
-        self.currentInferenceEngine = MockInferenceEngine()
+    init(engineManager: InferenceEngineManager? = nil) {
+        self.engineManager = engineManager ?? InferenceEngineManager()
     }
     
     // MARK: - Public Methods
@@ -86,9 +95,29 @@ class ChatManager: ObservableObject {
         }
     }
     
-    /// Set the inference engine
-    func setInferenceEngine(_ engine: InferenceEngine) {
-        currentInferenceEngine = engine
+    /// Switch to a specific inference engine
+    func switchToEngine(_ engineType: EngineType) async throws {
+        try await engineManager.switchToEngine(engineType)
+    }
+    
+    /// Load a model
+    func loadModel(_ model: ModelInfo) async throws {
+        try await engineManager.loadModel(model)
+    }
+    
+    /// Unload the current model
+    func unloadModel() async throws {
+        try await engineManager.unloadModel()
+    }
+    
+    /// Get available engines
+    var availableEngines: [EngineInfo] {
+        return engineManager.availableEngines
+    }
+    
+    /// Check if engine manager is loading
+    var isEngineLoading: Bool {
+        return engineManager.isLoading
     }
     
     /// Update inference parameters

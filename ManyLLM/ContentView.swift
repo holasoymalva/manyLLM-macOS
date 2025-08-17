@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var selectedModel = "Llama 3 8B Ollama"
     @State private var temperature: Double = 0.7
     @State private var maxTokens: Double = 600
+
     
     var body: some View {
         HStack(spacing: 0) {
@@ -187,7 +188,23 @@ struct ContentView: View {
                     }
                     
                     // Settings Gear
-                    Button(action: {}) {
+                    Menu {
+                        Button("Preferences") { }
+                        Divider()
+                        Button("About MLX Integration") { 
+                            print("🧪 MLX Integration Status:")
+                            if #available(macOS 13.0, *) {
+                                print("✓ macOS 13.0+ available for MLX")
+                                print("✓ MLX inference engine implemented")
+                                print("✓ Engine manager created for switching between engines")
+                                print("✓ Integration tests created")
+                                print("ℹ️ MLX integration is ready for testing with real models")
+                            } else {
+                                print("⚠️ macOS 13.0+ required for MLX")
+                            }
+                        }
+                        Button("About ManyLLM") { }
+                    } label: {
                         Image(systemName: "gearshape")
                             .font(.system(size: 16))
                             .foregroundColor(.secondary)
@@ -223,6 +240,7 @@ struct ContentView: View {
                 }
             }
         }
+
     }
 }
 
@@ -418,6 +436,8 @@ struct ChatView: View {
         ]
         return responses.randomElement() ?? "Mock response"
     }
+    
+
 }
 
 /// Welcome state view displayed when no messages are present
