@@ -43,7 +43,7 @@
   - Add loading states and response streaming simulation
   - _Requirements: 1.3, 1.4_
 
-- [-] 6. Core Data Persistence Setup
+- [x] 6. Core Data Persistence Setup
 
   - Create Core Data model file with entities for Workspace, ChatSession, Message, and Document
   - Implement Core Data stack with persistent container setup
