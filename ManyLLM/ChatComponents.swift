@@ -4,18 +4,22 @@ import SwiftUI
 
 /// Main chat interface view that displays messages and handles user input
 struct ChatView: View {
-    @State private var messages: [ChatMessage] = []
+    @StateObject private var chatManager = ChatManager()
     @State private var messageText = ""
-    @State private var isProcessing = false
     @State private var systemPrompt = "Default"
     
-    // File context state
-    @State private var activeDocuments: [String] = ["document.pdf", "notes.txt"]
+    // Mock active documents for testing
+    @State private var mockActiveDocuments: [String] = ["document.pdf", "notes.txt"]
     
     var body: some View {
         VStack(spacing: 0) {
+            // Mock Engine Configuration (for testing)
+            if let mockEngine = chatManager.currentInferenceEngine as? MockInferenceEngine {
+                MockEngineConfigView(mockEngine: mockEngine)
+            }
+            
             // Chat Messages Area
-            if messages.isEmpty {
+            if chatManager.messages.isEmpty {
                 // Welcome State
                 WelcomeView()
             } else {
@@ -23,22 +27,22 @@ struct ChatView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            ForEach(messages) { message in
+                            ForEach(chatManager.messages) { message in
                                 MessageBubbleView(message: message)
                                     .id(message.id)
                             }
                             
-                            // Processing indicator
-                            if isProcessing {
-                                ProcessingIndicatorView()
+                            // Processing indicator with streaming support
+                            if chatManager.isProcessing {
+                                StreamingIndicatorView()
                             }
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                     }
-                    .onChange(of: messages.count) { _ in
+                    .onChange(of: chatManager.messages.count) { _ in
                         // Auto-scroll to bottom when new message is added
-                        if let lastMessage = messages.last {
+                        if let lastMessage = chatManager.messages.last {
                             withAnimation(.easeOut(duration: 0.3)) {
                                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
                             }
@@ -48,63 +52,53 @@ struct ChatView: View {
             }
             
             // File Context Indicators (when documents are active)
-            if !activeDocuments.isEmpty {
-                FileContextBar(documents: activeDocuments)
+            if !mockActiveDocuments.isEmpty {
+                FileContextBar(documents: mockActiveDocuments)
             }
             
             // Bottom Input Area
             ChatInputView(
                 messageText: $messageText,
                 systemPrompt: $systemPrompt,
-                isProcessing: $isProcessing,
+                isProcessing: .constant(chatManager.isProcessing),
                 onSendMessage: sendMessage
             )
         }
         .background(Color(NSColor.textBackgroundColor))
+        .onChange(of: systemPrompt) { newPrompt in
+            // Update inference parameters when system prompt changes
+            var parameters = chatManager.inferenceParameters
+            parameters.systemPrompt = getSystemPromptText(for: newPrompt)
+            chatManager.updateParameters(parameters)
+        }
     }
     
     private func sendMessage() {
         let trimmedText = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty && !isProcessing else { return }
+        guard !trimmedText.isEmpty && !chatManager.isProcessing else { return }
         
-        // Create user message
-        let userMessage = ChatMessage(
-            content: trimmedText,
-            role: .user,
-            metadata: activeDocuments.isEmpty ? nil : MessageMetadata(
-                documentReferences: activeDocuments
-            )
-        )
-        
-        messages.append(userMessage)
         messageText = ""
-        isProcessing = true
         
-        // Simulate assistant response (will be replaced with actual inference)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            let assistantMessage = ChatMessage(
-                content: generateMockResponse(for: trimmedText),
-                role: .assistant,
-                metadata: MessageMetadata(
-                    modelUsed: "Mock Model",
-                    inferenceTime: 1.2,
-                    tokenCount: 45,
-                    documentReferences: activeDocuments.isEmpty ? nil : activeDocuments
-                )
-            )
-            
-            messages.append(assistantMessage)
-            isProcessing = false
+        Task {
+            await chatManager.sendMessage(trimmedText)
         }
     }
     
-    private func generateMockResponse(for input: String) -> String {
-        let responses = [
-            "I understand your question about \"\(input)\". This is a mock response that will be replaced with actual AI inference in a future implementation.",
-            "Thank you for your message. I'm currently running in preview mode, so this is a simulated response to demonstrate the chat interface.",
-            "Based on your input \"\(input)\", I would provide a helpful response here. This interface is ready for integration with the actual inference engine."
-        ]
-        return responses.randomElement() ?? "Mock response"
+    private func getSystemPromptText(for preset: String) -> String {
+        switch preset {
+        case "Creative Writing":
+            return "You are a creative writing assistant. Help users with storytelling, character development, and creative expression."
+        case "Code Assistant":
+            return "You are a helpful programming assistant. Provide clear, well-commented code examples and explain programming concepts."
+        case "Research Helper":
+            return "You are a research assistant. Help users analyze information, find sources, and organize their research."
+        case "Technical Writer":
+            return "You are a technical writing assistant. Help users create clear, concise documentation and technical content."
+        case "Data Analyst":
+            return "You are a data analysis assistant. Help users understand data, create visualizations, and draw insights."
+        default:
+            return "You are a helpful AI assistant. Provide accurate, helpful, and friendly responses."
+        }
     }
 }
 
@@ -672,6 +666,54 @@ struct ProcessingIndicatorView: View {
     }
 }
 
+/// Enhanced streaming indicator for mock engine demonstration
+struct StreamingIndicatorView: View {
+    @State private var animationPhase = 0
+    @State private var showTyping = true
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                // Typing animation
+                HStack(spacing: 4) {
+                    ForEach(0..<3) { index in
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 6, height: 6)
+                            .opacity(animationPhase == index ? 1.0 : 0.3)
+                            .animation(
+                                .easeInOut(duration: 0.6)
+                                .repeatForever(autoreverses: false)
+                                .delay(Double(index) * 0.2),
+                                value: animationPhase
+                            )
+                    }
+                }
+                
+                Text("AI is thinking...")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                    .opacity(showTyping ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: showTyping)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.accentColor.opacity(0.1))
+            .cornerRadius(16)
+            
+            Spacer()
+        }
+        .onAppear {
+            withAnimation {
+                animationPhase = 2
+            }
+            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                showTyping.toggle()
+            }
+        }
+    }
+}
+
 /// Small hint text with icon
 struct InputHint: View {
     let icon: String
@@ -768,5 +810,164 @@ struct RoundedCorner: Shape {
         
         path.closeSubpath()
         return path
+    }
+}
+/// Co
+nfiguration panel for MockInferenceEngine (development/testing only)
+struct MockEngineConfigView: View {
+    let mockEngine: MockInferenceEngine
+    @State private var isExpanded = false
+    @State private var responseDelay: Double
+    @State private var streamingDelay: Double
+    @State private var shouldSimulateErrors: Bool
+    @State private var errorProbability: Double
+    
+    init(mockEngine: MockInferenceEngine) {
+        self.mockEngine = mockEngine
+        self._responseDelay = State(initialValue: mockEngine.responseDelay)
+        self._streamingDelay = State(initialValue: mockEngine.streamingTokenDelay)
+        self._shouldSimulateErrors = State(initialValue: mockEngine.shouldSimulateErrors)
+        self._errorProbability = State(initialValue: mockEngine.errorProbability)
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            Button(action: { isExpanded.toggle() }) {
+                HStack {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.orange)
+                    
+                    Text("Mock Engine Settings")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.plain)
+            .background(Color.orange.opacity(0.1))
+            
+            // Configuration Panel
+            if isExpanded {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Response Delay")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.primary)
+                            
+                            HStack {
+                                Slider(value: $responseDelay, in: 0.1...5.0, step: 0.1)
+                                    .frame(width: 100)
+                                
+                                Text("\(responseDelay, specifier: "%.1f")s")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 35, alignment: .trailing)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Streaming Delay")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.primary)
+                            
+                            HStack {
+                                Slider(value: $streamingDelay, in: 0.01...0.5, step: 0.01)
+                                    .frame(width: 100)
+                                
+                                Text("\(streamingDelay, specifier: "%.2f")s")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 35, alignment: .trailing)
+                            }
+                        }
+                    }
+                    
+                    HStack {
+                        Toggle("Simulate Errors", isOn: $shouldSimulateErrors)
+                            .font(.system(size: 11))
+                        
+                        Spacer()
+                        
+                        if shouldSimulateErrors {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Error Rate")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.primary)
+                                
+                                HStack {
+                                    Slider(value: $errorProbability, in: 0.0...1.0, step: 0.1)
+                                        .frame(width: 80)
+                                    
+                                    Text("\(Int(errorProbability * 100))%")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 30, alignment: .trailing)
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Quick Actions
+                    HStack(spacing: 8) {
+                        Button("Fast Mode") {
+                            responseDelay = 0.2
+                            streamingDelay = 0.01
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        
+                        Button("Realistic Mode") {
+                            responseDelay = 1.0
+                            streamingDelay = 0.05
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        
+                        Button("Slow Mode") {
+                            responseDelay = 3.0
+                            streamingDelay = 0.2
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        
+                        Spacer()
+                        
+                        Button("Apply Settings") {
+                            applySettings()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.mini)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(NSColor.controlBackgroundColor))
+            }
+        }
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color(NSColor.separatorColor)),
+            alignment: .bottom
+        )
+    }
+    
+    private func applySettings() {
+        mockEngine.responseDelay = responseDelay
+        mockEngine.streamingTokenDelay = streamingDelay
+        mockEngine.shouldSimulateErrors = shouldSimulateErrors
+        mockEngine.errorProbability = errorProbability
     }
 }

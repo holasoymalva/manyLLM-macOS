@@ -35,7 +35,7 @@
   - Write UI tests for chat message display and input handling
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 5. Mock Inference Engine for Testing
+- [x] 5. Mock Inference Engine for Testing
 
   - Create MockInferenceEngine implementing InferenceEngine protocol
   - Generate simulated responses with configurable delay for testing
@@ -43,7 +43,7 @@
   - Add loading states and response streaming simulation
   - _Requirements: 1.3, 1.4_
 
-- [ ] 6. Core Data Persistence Setup
+- [-] 6. Core Data Persistence Setup
 
   - Create Core Data model file with entities for Workspace, ChatSession, Message, and Document
   - Implement Core Data stack with persistent container setup
