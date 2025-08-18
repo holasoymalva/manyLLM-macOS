@@ -1,5 +1,648 @@
 import SwiftUI
 import Foundation
+import PDFKit
+import UniformTypeIdentifiers
+import NaturalLanguage
+
+// MARK: - Document Processing Classes
+
+/// A chunk of text from a processed document
+struct DocumentChunk: Codable, Identifiable, Equatable {
+    let id: UUID
+    let content: String
+    let startIndex: Int
+    let endIndex: Int
+    let pageNumber: Int?
+    let embeddings: [Float]?
+    
+    init(
+        id: UUID = UUID(),
+        content: String,
+        startIndex: Int,
+        endIndex: Int,
+        pageNumber: Int? = nil,
+        embeddings: [Float]? = nil
+    ) {
+        self.id = id
+        self.content = content
+        self.startIndex = startIndex
+        self.endIndex = endIndex
+        self.pageNumber = pageNumber
+        self.embeddings = embeddings
+    }
+    
+    /// Length of the chunk content
+    var length: Int {
+        return content.count
+    }
+    
+    /// Whether this chunk has embeddings
+    var hasEmbeddings: Bool {
+        return embeddings != nil && !embeddings!.isEmpty
+    }
+}
+
+/// Metadata associated with a processed document
+struct DocumentMetadata: Codable, Equatable {
+    let title: String?
+    let author: String?
+    let subject: String?
+    let keywords: [String]?
+    let creationDate: Date?
+    let modificationDate: Date?
+    let pageCount: Int?
+    let language: String?
+    let processingDuration: TimeInterval?
+    let extractionMethod: String?
+    
+    init(
+        title: String? = nil,
+        author: String? = nil,
+        subject: String? = nil,
+        keywords: [String]? = nil,
+        creationDate: Date? = nil,
+        modificationDate: Date? = nil,
+        pageCount: Int? = nil,
+        language: String? = nil,
+        processingDuration: TimeInterval? = nil,
+        extractionMethod: String? = nil
+    ) {
+        self.title = title
+        self.author = author
+        self.subject = subject
+        self.keywords = keywords
+        self.creationDate = creationDate
+        self.modificationDate = modificationDate
+        self.pageCount = pageCount
+        self.language = language
+        self.processingDuration = processingDuration
+        self.extractionMethod = extractionMethod
+    }
+}
+
+/// A document that has been processed for text extraction and embedding
+struct ProcessedDocument: Codable, Identifiable, Equatable {
+    let id: UUID
+    let originalURL: URL
+    let filename: String
+    let fileSize: Int64
+    let mimeType: String
+    let content: String
+    let chunks: [DocumentChunk]
+    let metadata: DocumentMetadata
+    let processedAt: Date
+    var isActive: Bool
+    
+    init(
+        id: UUID = UUID(),
+        originalURL: URL,
+        filename: String,
+        fileSize: Int64,
+        mimeType: String,
+        content: String,
+        chunks: [DocumentChunk] = [],
+        metadata: DocumentMetadata,
+        processedAt: Date = Date(),
+        isActive: Bool = false
+    ) {
+        self.id = id
+        self.originalURL = originalURL
+        self.filename = filename
+        self.fileSize = fileSize
+        self.mimeType = mimeType
+        self.content = content
+        self.chunks = chunks
+        self.metadata = metadata
+        self.processedAt = processedAt
+        self.isActive = isActive
+    }
+    
+    /// Human-readable file size
+    var fileSizeString: String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: fileSize)
+    }
+    
+    /// File extension from filename
+    var fileExtension: String {
+        return (filename as NSString).pathExtension.lowercased()
+    }
+    
+    /// Number of chunks in the document
+    var chunkCount: Int {
+        return chunks.count
+    }
+    
+    /// Whether the document has been chunked
+    var isChunked: Bool {
+        return !chunks.isEmpty
+    }
+    
+    /// Whether all chunks have embeddings
+    var hasEmbeddings: Bool {
+        return !chunks.isEmpty && chunks.allSatisfy { $0.hasEmbeddings }
+    }
+    
+    /// Total character count
+    var characterCount: Int {
+        return content.count
+    }
+    
+    /// Estimated word count
+    var wordCount: Int {
+        return content.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }.count
+    }
+}
+
+/// Manages document upload, processing, and state for the application
+@MainActor
+class DocumentManager: ObservableObject {
+    
+    // MARK: - Published Properties
+    
+    @Published var documents: [ProcessedDocument] = []
+    @Published var isProcessing: Bool = false
+    @Published var processingProgress: Double = 0.0
+    @Published var processingStatus: String = ""
+    @Published var errorMessage: String?
+    @Published var showingError: Bool = false
+    
+    // MARK: - Computed Properties
+    
+    var activeDocuments: [ProcessedDocument] {
+        return documents.filter { $0.isActive }
+    }
+    
+    var activeDocumentCount: Int {
+        return activeDocuments.count
+    }
+    
+    var totalDocumentCount: Int {
+        return documents.count
+    }
+    
+    var contextSummary: String {
+        if totalDocumentCount == 0 {
+            return "No files"
+        } else if activeDocumentCount == totalDocumentCount {
+            return "\(totalDocumentCount) file\(totalDocumentCount == 1 ? "" : "s") in context"
+        } else {
+            return "\(activeDocumentCount) of \(totalDocumentCount) file\(totalDocumentCount == 1 ? "" : "s") in context"
+        }
+    }
+    
+    // MARK: - Document Management
+    
+    /// Toggle document active state for context inclusion
+    func toggleDocumentActive(_ document: ProcessedDocument) {
+        if let index = documents.firstIndex(where: { $0.id == document.id }) {
+            documents[index].isActive.toggle()
+        }
+    }
+    
+    /// Remove a document from the collection
+    func removeDocument(_ document: ProcessedDocument) {
+        documents.removeAll { $0.id == document.id }
+    }
+    
+    /// Remove all documents
+    func removeAllDocuments() {
+        documents.removeAll()
+    }
+    
+    /// Get active document content for context
+    func getActiveDocumentContext() -> String {
+        let activeContent = activeDocuments.map { document in
+            "Document: \(document.filename)\n\(document.content)\n"
+        }.joined(separator: "\n---\n\n")
+        
+        return activeContent
+    }
+    
+    /// Add mock documents for testing
+    func addMockDocuments() {
+        let mockDocuments = [
+            ProcessedDocument(
+                originalURL: URL(fileURLWithPath: "/tmp/document.pdf"),
+                filename: "document.pdf",
+                fileSize: 2_400_000,
+                mimeType: "application/pdf",
+                content: "This is a sample PDF document content for testing purposes.",
+                chunks: [],
+                metadata: DocumentMetadata(
+                    title: "Sample Document",
+                    pageCount: 5
+                ),
+                isActive: true
+            ),
+            ProcessedDocument(
+                originalURL: URL(fileURLWithPath: "/tmp/notes.txt"),
+                filename: "notes.txt",
+                fileSize: 45_000,
+                mimeType: "text/plain",
+                content: "These are sample notes for testing the document processing functionality.",
+                chunks: [],
+                metadata: DocumentMetadata(
+                    title: "Notes"
+                ),
+                isActive: true
+            ),
+            ProcessedDocument(
+                originalURL: URL(fileURLWithPath: "/tmp/data.csv"),
+                filename: "data.csv",
+                fileSize: 1_100_000,
+                mimeType: "text/csv",
+                content: "Sample CSV data with headers and rows for testing purposes.",
+                chunks: [],
+                metadata: DocumentMetadata(
+                    title: "Data"
+                ),
+                isActive: false
+            )
+        ]
+        
+        documents.append(contentsOf: mockDocuments)
+    }
+}
+
+/// Enhanced Files section view with drag-and-drop support and document management
+struct FilesView: View {
+    @ObservedObject var documentManager: DocumentManager
+    @Binding var isExpanded: Bool
+    
+    @State private var isDragOver = false
+    @State private var showingFilePicker = false
+    @State private var showingDocumentDetails: ProcessedDocument?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header
+            FilesHeaderView(
+                isExpanded: $isExpanded,
+                contextSummary: documentManager.contextSummary,
+                onAddFiles: { showingFilePicker = true },
+                onClearAll: { documentManager.removeAllDocuments() },
+                hasDocuments: !documentManager.documents.isEmpty
+            )
+            
+            if isExpanded {
+                // Document list or empty state
+                if documentManager.documents.isEmpty && !documentManager.isProcessing {
+                    EmptyFilesView(
+                        onAddFiles: { showingFilePicker = true }
+                    )
+                } else {
+                    DocumentListView(
+                        documents: documentManager.documents,
+                        onToggleActive: documentManager.toggleDocumentActive,
+                        onRemove: documentManager.removeDocument,
+                        onShowDetails: { document in
+                            showingDocumentDetails = document
+                        }
+                    )
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .background(
+            // Drag and drop background
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isDragOver ? Color.accentColor.opacity(0.1) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            isDragOver ? Color.accentColor : Color.clear,
+                            lineWidth: 2
+                        )
+                        .animation(.easeInOut(duration: 0.2), value: isDragOver)
+                )
+        )
+        .onDrop(of: [.fileURL], isTargeted: $isDragOver) { providers in
+            // For now, just show that files were dropped
+            print("Files dropped: \(providers.count)")
+            return true
+        }
+        .sheet(item: $showingDocumentDetails) { document in
+            DocumentDetailSheet(document: document)
+        }
+    }
+}
+
+/// Files section header with controls
+struct FilesHeaderView: View {
+    @Binding var isExpanded: Bool
+    let contextSummary: String
+    let onAddFiles: () -> Void
+    let onClearAll: () -> Void
+    let hasDocuments: Bool
+    
+    var body: some View {
+        HStack {
+            Button(action: { isExpanded.toggle() }) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            
+            Text("Files")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.primary)
+            
+            Spacer()
+            
+            Text(contextSummary)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+            
+            // Add files button
+            Menu {
+                Button("Add Files...") {
+                    onAddFiles()
+                }
+                
+                if hasDocuments {
+                    Divider()
+                    
+                    Button("Clear All") {
+                        onClearAll()
+                    }
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// Empty state view for files section
+struct EmptyFilesView: View {
+    let onAddFiles: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc.text.below.ecg")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary.opacity(0.6))
+            
+            VStack(spacing: 4) {
+                Text("No documents")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                Text("Drag files here or click + to add")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            
+            Text("Supports: PDF, TXT, CSV, DOCX")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary.opacity(0.8))
+                .multilineTextAlignment(.center)
+            
+            Button("Add Files") {
+                onAddFiles()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// List of documents
+struct DocumentListView: View {
+    let documents: [ProcessedDocument]
+    let onToggleActive: (ProcessedDocument) -> Void
+    let onRemove: (ProcessedDocument) -> Void
+    let onShowDetails: (ProcessedDocument) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(documents) { document in
+                DocumentItemView(
+                    document: document,
+                    onToggleActive: { onToggleActive(document) },
+                    onRemove: { onRemove(document) },
+                    onShowDetails: { onShowDetails(document) }
+                )
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+}
+
+/// Individual document item view
+struct DocumentItemView: View {
+    let document: ProcessedDocument
+    let onToggleActive: () -> Void
+    let onRemove: () -> Void
+    let onShowDetails: () -> Void
+    
+    @State private var isHovered = false
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            // File icon
+            Image(systemName: fileIcon(for: document.filename))
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .frame(width: 16)
+            
+            // File info
+            VStack(alignment: .leading, spacing: 1) {
+                Text(document.filename)
+                    .font(.system(size: 12))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                HStack(spacing: 4) {
+                    Text(document.fileSizeString)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    
+                    if document.isChunked {
+                        Text("•")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary)
+                        
+                        Text("\(document.chunkCount) chunks")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            // Context indicator and controls
+            HStack(spacing: 6) {
+                // Context eye icon
+                Button(action: onToggleActive) {
+                    Image(systemName: document.isActive ? "eye.fill" : "eye.slash")
+                        .font(.system(size: 10))
+                        .foregroundColor(document.isActive ? .accentColor : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(document.isActive ? "Remove from context" : "Add to context")
+                
+                // More options (shown on hover)
+                if isHovered {
+                    Menu {
+                        Button("View Details") {
+                            onShowDetails()
+                        }
+                        
+                        Button(document.isActive ? "Remove from Context" : "Add to Context") {
+                            onToggleActive()
+                        }
+                        
+                        Divider()
+                        
+                        Button("Remove") {
+                            onRemove()
+                        }
+                        .foregroundColor(.red)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .menuStyle(.borderlessButton)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(document.isActive ? Color.accentColor.opacity(0.1) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isHovered = hovering
+            }
+        }
+        .onTapGesture {
+            onToggleActive()
+        }
+    }
+    
+    private func fileIcon(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "pdf":
+            return "doc.richtext"
+        case "txt":
+            return "doc.text"
+        case "csv":
+            return "tablecells"
+        case "docx", "doc":
+            return "doc"
+        default:
+            return "doc"
+        }
+    }
+}
+
+/// Document detail sheet
+struct DocumentDetailSheet: View {
+    let document: ProcessedDocument
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Header
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: fileIcon(for: document.filename))
+                                .font(.system(size: 24))
+                                .foregroundColor(.accentColor)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(document.filename)
+                                    .font(.title2)
+                                    .fontWeight(.semibold)
+                                
+                                Text(document.fileSizeString)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                        }
+                        
+                        if let title = document.metadata.title, title != document.filename {
+                            Text(title)
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    // Content preview
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Content Preview")
+                            .font(.headline)
+                        
+                        ScrollView {
+                            Text(String(document.content.prefix(1000)) + (document.content.count > 1000 ? "..." : ""))
+                                .font(.system(size: 12, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 200)
+                        .padding(8)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                        )
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+            }
+            .navigationTitle("Document Details")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 600, minHeight: 500)
+    }
+    
+    private func fileIcon(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "pdf":
+            return "doc.richtext"
+        case "txt":
+            return "doc.text"
+        case "csv":
+            return "tablecells"
+        case "docx", "doc":
+            return "doc"
+        default:
+            return "doc"
+        }
+    }
+}
 
 // MARK: - Core Data Models
 
@@ -765,6 +1408,9 @@ struct ContentView: View {
     @StateObject private var parameterManager = ParameterManager()
     @State private var showingSettings = false
     
+    // Document management
+    @StateObject private var documentManager = DocumentManager()
+    
     // Model management state
     @State private var currentModel: String = "No Model"
     @State private var modelStatus: ModelStatus = .unloaded
@@ -821,36 +1467,10 @@ struct ContentView: View {
                         .padding(.vertical, 8)
                     
                     // Files Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Button(action: { filesExpanded.toggle() }) {
-                                Image(systemName: filesExpanded ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            
-                            Text("Files")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.primary)
-                            
-                            Spacer()
-                            
-                            Text("2 of 3 files in context")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.horizontal, 12)
-                        
-                        if filesExpanded {
-                            VStack(alignment: .leading, spacing: 4) {
-                                FileItem(name: "document.pdf", size: "2.3 MB", hasContext: true)
-                                FileItem(name: "notes.txt", size: "45 KB", hasContext: true)
-                                FileItem(name: "data.csv", size: "1.1 MB", hasContext: false)
-                            }
-                            .padding(.horizontal, 8)
-                        }
-                    }
+                    FilesView(
+                        documentManager: documentManager,
+                        isExpanded: $filesExpanded
+                    )
                     
                     Spacer()
                 }
@@ -981,7 +1601,10 @@ struct ContentView: View {
                 )
                 
                 // Chat Interface
-                ChatView(parameterManager: parameterManager)
+                ChatView(
+                    parameterManager: parameterManager,
+                    documentManager: documentManager
+                )
             }
         }
         .frame(minWidth: 800, minHeight: 600)
@@ -997,6 +1620,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingModelBrowser) {
             SimpleModelBrowserView()
+        }
+        .onAppear {
+            // Add mock documents for testing
+            documentManager.addMockDocuments()
         }
 
     }
@@ -1392,12 +2019,10 @@ struct SimpleChatMessage: Identifiable {
 /// Main chat interface view that displays messages and handles user input
 struct ChatView: View {
     @ObservedObject var parameterManager: ParameterManager
+    @ObservedObject var documentManager: DocumentManager
     @State private var messages: [SimpleChatMessage] = []
     @State private var messageText = ""
     @State private var isProcessing = false
-    
-    // File context state
-    @State private var activeDocuments: [String] = ["document.pdf", "notes.txt"]
     
     var body: some View {
         VStack(spacing: 0) {
@@ -1435,8 +2060,8 @@ struct ChatView: View {
             }
             
             // File Context Indicators (when documents are active)
-            if !activeDocuments.isEmpty {
-                FileContextBar(documents: activeDocuments)
+            if !documentManager.activeDocuments.isEmpty {
+                FileContextBar(documents: documentManager.activeDocuments.map { $0.filename })
             }
             
             // Bottom Input Area
