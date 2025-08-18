@@ -18,6 +18,7 @@ class InferenceEngineManager: ObservableObject {
     private let logger = Logger(subsystem: "com.manyllm.app", category: "InferenceEngineManager")
     private var mockEngine: MockInferenceEngine?
     private var mlxEngine: MLXInferenceEngine?
+    private var llamaCppEngine: LlamaCppInferenceEngine?
     
     // MARK: - Initialization
     
@@ -45,6 +46,8 @@ class InferenceEngineManager: ObservableObject {
             try await switchToMockEngine()
         case .mlx:
             try await switchToMLXEngine()
+        case .llamaCpp:
+            try await switchToLlamaCppEngine()
         }
         
         logger.info("Successfully switched to \(engineType.rawValue) engine")
@@ -61,10 +64,13 @@ class InferenceEngineManager: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         
-        // For MLX engine, we need to load the model directly
+        // Load model based on engine type
         if let mlxEngine = engine as? MLXInferenceEngine {
             try await mlxEngine.loadModel(model)
             loadedModel = mlxEngine.loadedModel
+        } else if let llamaCppEngine = engine as? LlamaCppInferenceEngine {
+            try await llamaCppEngine.loadModel(model)
+            loadedModel = llamaCppEngine.loadedModel
         } else if let mockEngine = engine as? MockInferenceEngine {
             // Mock engine simulates loading
             mockEngine.loadMockModel(model)
@@ -82,6 +88,8 @@ class InferenceEngineManager: ObservableObject {
         
         if let mlxEngine = engine as? MLXInferenceEngine {
             try await mlxEngine.unloadCurrentModel()
+        } else if let llamaCppEngine = engine as? LlamaCppInferenceEngine {
+            try await llamaCppEngine.unloadCurrentModel()
         } else if let mockEngine = engine as? MockInferenceEngine {
             mockEngine.unloadModel()
         }
@@ -92,16 +100,31 @@ class InferenceEngineManager: ObservableObject {
     
     /// Get the best available engine for a given model
     func getBestEngineForModel(_ model: ModelInfo) -> EngineType {
-        // Check if MLX is available and model is compatible
+        guard let localPath = model.localPath else {
+            return .mock // No local path, use mock for testing
+        }
+        
+        let fileExtension = localPath.pathExtension.lowercased()
+        
+        // Check if MLX is available and model is compatible (prefer MLX for Apple Silicon)
         if #available(macOS 13.0, *), MLXInferenceEngine.isAvailable() {
-            // Check if model format is supported by MLX
-            if let localPath = model.localPath {
-                let fileExtension = localPath.pathExtension.lowercased()
-                let mlxSupportedFormats = ["mlx", "safetensors", "gguf"]
-                if mlxSupportedFormats.contains(fileExtension) {
-                    return .mlx
-                }
+            let mlxSupportedFormats = ["mlx", "safetensors"]
+            if mlxSupportedFormats.contains(fileExtension) {
+                return .mlx
             }
+        }
+        
+        // Check if llama.cpp can handle the model format
+        if LlamaCppInferenceEngine.isAvailable() {
+            let llamaCppSupportedFormats = ["gguf", "ggml", "bin"]
+            if llamaCppSupportedFormats.contains(fileExtension) {
+                return .llamaCpp
+            }
+        }
+        
+        // If MLX is available but model format is GGUF, prefer llama.cpp for better compatibility
+        if fileExtension == "gguf" && LlamaCppInferenceEngine.isAvailable() {
+            return .llamaCpp
         }
         
         // Fallback to mock engine
@@ -118,6 +141,8 @@ class InferenceEngineManager: ObservableObject {
                 return MLXInferenceEngine.isAvailable()
             }
             return false
+        case .llamaCpp:
+            return LlamaCppInferenceEngine.isAvailable()
         }
     }
     
@@ -131,6 +156,8 @@ class InferenceEngineManager: ObservableObject {
                 return mlxEngine?.capabilities ?? MLXInferenceEngine().capabilities
             }
             return nil
+        case .llamaCpp:
+            return llamaCppEngine?.capabilities ?? LlamaCppInferenceEngine().capabilities
         }
     }
     
@@ -166,13 +193,40 @@ class InferenceEngineManager: ObservableObject {
                 capabilities: nil
             ))
         }
+        
+        // Add llama.cpp engine
+        if LlamaCppInferenceEngine.isAvailable() {
+            availableEngines.append(EngineInfo(
+                type: .llamaCpp,
+                name: "llama.cpp Engine",
+                description: "CPU-optimized inference for broader compatibility",
+                isAvailable: true,
+                capabilities: LlamaCppInferenceEngine().capabilities
+            ))
+        } else {
+            availableEngines.append(EngineInfo(
+                type: .llamaCpp,
+                name: "llama.cpp Engine",
+                description: "CPU inference engine (unavailable)",
+                isAvailable: false,
+                capabilities: nil
+            ))
+        }
     }
     
     private func initializeDefaultEngine() {
         Task {
             do {
-                // Try to use MLX engine if available, otherwise fall back to mock
-                let defaultEngineType: EngineType = isEngineAvailable(.mlx) ? .mlx : .mock
+                // Try to use the best available engine: MLX > llama.cpp > mock
+                let defaultEngineType: EngineType
+                if isEngineAvailable(.mlx) {
+                    defaultEngineType = .mlx
+                } else if isEngineAvailable(.llamaCpp) {
+                    defaultEngineType = .llamaCpp
+                } else {
+                    defaultEngineType = .mock
+                }
+                
                 try await switchToEngine(defaultEngineType)
             } catch {
                 logger.error("Failed to initialize default engine: \(error.localizedDescription)")
@@ -208,9 +262,24 @@ class InferenceEngineManager: ObservableObject {
         loadedModel = mlxEngine?.loadedModel
     }
     
+    private func switchToLlamaCppEngine() async throws {
+        guard LlamaCppInferenceEngine.isAvailable() else {
+            throw ManyLLMError.inferenceError("llama.cpp engine is not available")
+        }
+        
+        if llamaCppEngine == nil {
+            llamaCppEngine = LlamaCppInferenceEngine()
+        }
+        
+        currentEngine = llamaCppEngine
+        loadedModel = llamaCppEngine?.loadedModel
+    }
+    
     private func unloadCurrentEngine() async throws {
         if let mlxEngine = currentEngine as? MLXInferenceEngine {
             try await mlxEngine.unloadCurrentModel()
+        } else if let llamaCppEngine = currentEngine as? LlamaCppInferenceEngine {
+            try await llamaCppEngine.unloadCurrentModel()
         } else if let mockEngine = currentEngine as? MockInferenceEngine {
             mockEngine.unloadModel()
         }
@@ -240,6 +309,7 @@ struct EngineInfo: Identifiable {
 enum EngineType: String, CaseIterable {
     case mock = "mock"
     case mlx = "mlx"
+    case llamaCpp = "llama_cpp"
     
     var displayName: String {
         switch self {
@@ -247,6 +317,8 @@ enum EngineType: String, CaseIterable {
             return "Mock Engine"
         case .mlx:
             return "MLX Engine"
+        case .llamaCpp:
+            return "llama.cpp Engine"
         }
     }
     
@@ -256,6 +328,8 @@ enum EngineType: String, CaseIterable {
             return "Development and testing engine with simulated responses"
         case .mlx:
             return "Apple Silicon optimized inference using MLX framework"
+        case .llamaCpp:
+            return "CPU-optimized inference using llama.cpp for broader model compatibility"
         }
     }
 }

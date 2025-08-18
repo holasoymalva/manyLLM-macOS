@@ -11,7 +11,10 @@ let package = Package(
     ],
     dependencies: [
         // MLX Swift package for Apple Silicon optimization
-        .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.12.0")
+        .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.12.0"),
+        // Note: llama.cpp integration would require a Swift wrapper
+        // For now, we implement the interface with placeholder types
+        // In production, this would be replaced with actual llama.cpp Swift bindings
     ],
     targets: [
         .target(
@@ -20,6 +23,7 @@ let package = Package(
                 .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXNN", package: "mlx-swift"),
                 .product(name: "MLXRandom", package: "mlx-swift")
+                // llama.cpp dependency would be added here in production
             ]
         )
     ]
