@@ -1,11 +1,768 @@
 import SwiftUI
 
+// MARK: - Core Data Models
+
+/// Parameters for controlling model inference behavior
+struct InferenceParameters: Codable, Equatable {
+    var temperature: Float
+    var maxTokens: Int
+    var topP: Float
+    var topK: Int?
+    var systemPrompt: String
+    var stopSequences: [String]
+    var repeatPenalty: Float?
+    var seed: Int?
+    
+    init(
+        temperature: Float = 0.7,
+        maxTokens: Int = 2048,
+        topP: Float = 0.9,
+        topK: Int? = nil,
+        systemPrompt: String = "",
+        stopSequences: [String] = [],
+        repeatPenalty: Float? = nil,
+        seed: Int? = nil
+    ) {
+        self.temperature = temperature
+        self.maxTokens = maxTokens
+        self.topP = topP
+        self.topK = topK
+        self.systemPrompt = systemPrompt
+        self.stopSequences = stopSequences
+        self.repeatPenalty = repeatPenalty
+        self.seed = seed
+    }
+    
+    /// Validate parameter values and return any validation errors
+    func validate() throws {
+        if temperature < 0.0 || temperature > 2.0 {
+            throw ManyLLMError.validationError("Temperature must be between 0.0 and 2.0")
+        }
+        
+        if maxTokens < 1 || maxTokens > 32768 {
+            throw ManyLLMError.validationError("Max tokens must be between 1 and 32768")
+        }
+        
+        if topP < 0.0 || topP > 1.0 {
+            throw ManyLLMError.validationError("Top-p must be between 0.0 and 1.0")
+        }
+        
+        if let topK = topK, topK < 1 {
+            throw ManyLLMError.validationError("Top-k must be greater than 0")
+        }
+        
+        if let repeatPenalty = repeatPenalty, repeatPenalty < 0.0 {
+            throw ManyLLMError.validationError("Repeat penalty must be non-negative")
+        }
+    }
+    
+    /// Create a copy with modified temperature
+    func withTemperature(_ temperature: Float) -> InferenceParameters {
+        var copy = self
+        copy.temperature = temperature
+        return copy
+    }
+    
+    /// Create a copy with modified max tokens
+    func withMaxTokens(_ maxTokens: Int) -> InferenceParameters {
+        var copy = self
+        copy.maxTokens = maxTokens
+        return copy
+    }
+    
+    /// Create a copy with modified system prompt
+    func withSystemPrompt(_ systemPrompt: String) -> InferenceParameters {
+        var copy = self
+        copy.systemPrompt = systemPrompt
+        return copy
+    }
+    
+    /// Default parameters for different use cases
+    static let `default` = InferenceParameters()
+    
+    static let creative = InferenceParameters(
+        temperature: 1.0,
+        maxTokens: 2048,
+        topP: 0.95
+    )
+    
+    static let precise = InferenceParameters(
+        temperature: 0.1,
+        maxTokens: 1024,
+        topP: 0.8
+    )
+    
+    static let balanced = InferenceParameters(
+        temperature: 0.7,
+        maxTokens: 2048,
+        topP: 0.9
+    )
+}
+
+/// Comprehensive error types for the ManyLLM application
+enum ManyLLMError: LocalizedError, Equatable {
+    case modelNotFound(String)
+    case modelLoadFailed(String)
+    case inferenceError(String)
+    case documentProcessingFailed(String)
+    case networkError(String)
+    case storageError(String)
+    case apiServerError(String)
+    case validationError(String)
+    case insufficientResources(String)
+    case unsupportedFormat(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .modelNotFound(let modelName):
+            return "Model '\(modelName)' could not be found"
+        case .modelLoadFailed(let reason):
+            return "Failed to load model: \(reason)"
+        case .inferenceError(let reason):
+            return "Inference failed: \(reason)"
+        case .documentProcessingFailed(let reason):
+            return "Document processing failed: \(reason)"
+        case .networkError(let reason):
+            return "Network error: \(reason)"
+        case .storageError(let reason):
+            return "Storage error: \(reason)"
+        case .apiServerError(let reason):
+            return "API server error: \(reason)"
+        case .validationError(let reason):
+            return "Validation error: \(reason)"
+        case .insufficientResources(let reason):
+            return "Insufficient resources: \(reason)"
+        case .unsupportedFormat(let format):
+            return "Unsupported format: \(format)"
+        }
+    }
+    
+    var recoverySuggestion: String? {
+        switch self {
+        case .modelNotFound:
+            return "Please check that the model exists and try again, or download the model from the model browser."
+        case .modelLoadFailed:
+            return "Try restarting the application or freeing up system memory before loading the model."
+        case .inferenceError:
+            return "Check your input parameters and try again. If the problem persists, try reloading the model."
+        case .documentProcessingFailed:
+            return "Ensure the document is not corrupted and is in a supported format (PDF, DOCX, TXT, CSV)."
+        case .networkError:
+            return "Check your internet connection and try again."
+        case .storageError:
+            return "Check available disk space and file permissions."
+        case .apiServerError:
+            return "Check API server configuration and try restarting the server."
+        case .validationError:
+            return "Please correct the input and try again."
+        case .insufficientResources:
+            return "Close other applications or try using a smaller model to free up system resources."
+        case .unsupportedFormat:
+            return "Please use a supported file format (PDF, DOCX, TXT, CSV)."
+        }
+    }
+    
+    var failureReason: String? {
+        switch self {
+        case .modelNotFound:
+            return "The specified model could not be located in the local storage or remote repository."
+        case .modelLoadFailed:
+            return "The model could not be loaded into memory, possibly due to insufficient resources or corruption."
+        case .inferenceError:
+            return "The model failed to generate a response, possibly due to invalid parameters or model state."
+        case .documentProcessingFailed:
+            return "The document could not be processed for text extraction or embedding generation."
+        case .networkError:
+            return "A network operation failed, preventing communication with remote services."
+        case .storageError:
+            return "A file system operation failed, preventing data persistence or retrieval."
+        case .apiServerError:
+            return "The API server encountered an error while processing a request."
+        case .validationError:
+            return "Input validation failed due to invalid or missing required data."
+        case .insufficientResources:
+            return "The system does not have enough memory or processing power to complete the operation."
+        case .unsupportedFormat:
+            return "The file format is not supported by the current document processing pipeline."
+        }
+    }
+}
+
+// MARK: - Parameter Management Classes
+
+/// Manages inference parameters with validation and real-time updates
+@MainActor
+class ParameterManager: ObservableObject {
+    
+    // MARK: - Published Properties
+    
+    @Published var parameters = InferenceParameters()
+    @Published var validationErrors: [String] = []
+    @Published var hasValidationErrors: Bool = false
+    
+    // MARK: - System Prompt Presets
+    
+    static let systemPromptPresets: [SystemPromptPreset] = [
+        SystemPromptPreset(
+            name: "Default",
+            prompt: "",
+            description: "No system prompt - use model's default behavior"
+        ),
+        SystemPromptPreset(
+            name: "Helpful Assistant",
+            prompt: "You are a helpful, harmless, and honest AI assistant. Provide clear, accurate, and useful responses.",
+            description: "General purpose helpful assistant"
+        ),
+        SystemPromptPreset(
+            name: "Code Assistant",
+            prompt: "You are an expert programmer and code reviewer. Provide clear, well-documented code examples and explanations. Focus on best practices, security, and maintainability.",
+            description: "Specialized for programming tasks"
+        ),
+        SystemPromptPreset(
+            name: "Research Assistant",
+            prompt: "You are a research assistant. Provide thorough, well-sourced information. When uncertain, clearly state limitations and suggest further research directions.",
+            description: "Focused on research and analysis"
+        ),
+        SystemPromptPreset(
+            name: "Creative Writer",
+            prompt: "You are a creative writing assistant. Help with storytelling, character development, and creative expression. Be imaginative while maintaining coherence.",
+            description: "For creative writing tasks"
+        ),
+        SystemPromptPreset(
+            name: "Technical Writer",
+            prompt: "You are a technical writing expert. Create clear, concise documentation and explanations. Use appropriate technical terminology while remaining accessible.",
+            description: "For technical documentation"
+        )
+    ]
+    
+    @Published var selectedPresetName: String = "Default"
+    
+    // MARK: - Parameter Ranges and Validation
+    
+    static let temperatureRange: ClosedRange<Float> = 0.0...2.0
+    static let maxTokensRange: ClosedRange<Int> = 1...8192
+    static let topPRange: ClosedRange<Float> = 0.0...1.0
+    
+    // MARK: - Initialization
+    
+    init() {
+        validateParameters()
+    }
+    
+    // MARK: - Parameter Updates
+    
+    /// Update temperature with validation
+    func updateTemperature(_ temperature: Float) {
+        let clampedValue = max(Self.temperatureRange.lowerBound, 
+                              min(Self.temperatureRange.upperBound, temperature))
+        parameters.temperature = clampedValue
+        validateParameters()
+    }
+    
+    /// Update max tokens with validation
+    func updateMaxTokens(_ maxTokens: Int) {
+        let clampedValue = max(Self.maxTokensRange.lowerBound,
+                              min(Self.maxTokensRange.upperBound, maxTokens))
+        parameters.maxTokens = clampedValue
+        validateParameters()
+    }
+    
+    /// Update top-p with validation
+    func updateTopP(_ topP: Float) {
+        let clampedValue = max(Self.topPRange.lowerBound,
+                              min(Self.topPRange.upperBound, topP))
+        parameters.topP = clampedValue
+        validateParameters()
+    }
+    
+    /// Update system prompt from preset
+    func selectSystemPromptPreset(_ presetName: String) {
+        selectedPresetName = presetName
+        if let preset = Self.systemPromptPresets.first(where: { $0.name == presetName }) {
+            parameters.systemPrompt = preset.prompt
+        }
+        validateParameters()
+    }
+    
+    /// Update system prompt directly
+    func updateSystemPrompt(_ prompt: String) {
+        parameters.systemPrompt = prompt
+        // Update selected preset to "Custom" if prompt doesn't match any preset
+        if !Self.systemPromptPresets.contains(where: { $0.prompt == prompt }) {
+            selectedPresetName = "Custom"
+        }
+        validateParameters()
+    }
+    
+    /// Reset parameters to defaults
+    func resetToDefaults() {
+        parameters = InferenceParameters()
+        selectedPresetName = "Default"
+        validateParameters()
+    }
+    
+    /// Load preset parameters
+    func loadPreset(_ preset: ParameterPreset) {
+        parameters = preset.parameters
+        selectedPresetName = preset.systemPromptName
+        validateParameters()
+    }
+    
+    // MARK: - Validation
+    
+    private func validateParameters() {
+        validationErrors.removeAll()
+        
+        do {
+            try parameters.validate()
+            hasValidationErrors = false
+        } catch let error as ManyLLMError {
+            validationErrors.append(error.localizedDescription)
+            hasValidationErrors = true
+        } catch {
+            validationErrors.append("Unknown validation error")
+            hasValidationErrors = true
+        }
+    }
+    
+    /// Get validation status for a specific parameter
+    func getValidationStatus(for parameter: ParameterType) -> ValidationStatus {
+        switch parameter {
+        case .temperature:
+            return parameters.temperature >= Self.temperatureRange.lowerBound && 
+                   parameters.temperature <= Self.temperatureRange.upperBound ? .valid : .invalid
+        case .maxTokens:
+            return parameters.maxTokens >= Self.maxTokensRange.lowerBound && 
+                   parameters.maxTokens <= Self.maxTokensRange.upperBound ? .valid : .invalid
+        case .topP:
+            return parameters.topP >= Self.topPRange.lowerBound && 
+                   parameters.topP <= Self.topPRange.upperBound ? .valid : .invalid
+        case .systemPrompt:
+            return .valid // System prompt is always valid
+        }
+    }
+}
+
+// MARK: - Supporting Types
+
+struct SystemPromptPreset: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    let prompt: String
+    let description: String
+}
+
+struct ParameterPreset: Identifiable {
+    let id = UUID()
+    let name: String
+    let description: String
+    let parameters: InferenceParameters
+    let systemPromptName: String
+    
+    static let presets: [ParameterPreset] = [
+        ParameterPreset(
+            name: "Balanced",
+            description: "Good balance of creativity and coherence",
+            parameters: InferenceParameters.balanced,
+            systemPromptName: "Default"
+        ),
+        ParameterPreset(
+            name: "Creative",
+            description: "More creative and varied responses",
+            parameters: InferenceParameters.creative,
+            systemPromptName: "Creative Writer"
+        ),
+        ParameterPreset(
+            name: "Precise",
+            description: "Focused and deterministic responses",
+            parameters: InferenceParameters.precise,
+            systemPromptName: "Helpful Assistant"
+        ),
+        ParameterPreset(
+            name: "Code Generation",
+            description: "Optimized for programming tasks",
+            parameters: InferenceParameters(
+                temperature: 0.2,
+                maxTokens: 4096,
+                topP: 0.8,
+                systemPrompt: ""
+            ),
+            systemPromptName: "Code Assistant"
+        )
+    ]
+}
+
+enum ParameterType {
+    case temperature
+    case maxTokens
+    case topP
+    case systemPrompt
+}
+
+enum ValidationStatus {
+    case valid
+    case invalid
+    case warning
+}
+
+// MARK: - Parameter Controls Views
+
+/// Enhanced parameter controls for the top toolbar with validation feedback
+struct ParameterControlsView: View {
+    @ObservedObject var parameterManager: ParameterManager
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Temperature Slider
+            ParameterSliderView(
+                title: "Temperature",
+                value: Binding(
+                    get: { Double(parameterManager.parameters.temperature) },
+                    set: { parameterManager.updateTemperature(Float($0)) }
+                ),
+                range: Double(ParameterManager.temperatureRange.lowerBound)...Double(ParameterManager.temperatureRange.upperBound),
+                step: 0.1,
+                format: "%.1f",
+                validationStatus: parameterManager.getValidationStatus(for: .temperature),
+                width: 80
+            )
+            
+            // Max Tokens Slider
+            ParameterSliderView(
+                title: "Max Tokens",
+                value: Binding(
+                    get: { Double(parameterManager.parameters.maxTokens) },
+                    set: { parameterManager.updateMaxTokens(Int($0)) }
+                ),
+                range: Double(ParameterManager.maxTokensRange.lowerBound)...Double(ParameterManager.maxTokensRange.upperBound),
+                step: 1,
+                format: "%.0f",
+                validationStatus: parameterManager.getValidationStatus(for: .maxTokens),
+                width: 80
+            )
+            
+            // Top-P Slider (Advanced parameter, shown in compact form)
+            ParameterSliderView(
+                title: "Top-P",
+                value: Binding(
+                    get: { Double(parameterManager.parameters.topP) },
+                    set: { parameterManager.updateTopP(Float($0)) }
+                ),
+                range: Double(ParameterManager.topPRange.lowerBound)...Double(ParameterManager.topPRange.upperBound),
+                step: 0.05,
+                format: "%.2f",
+                validationStatus: parameterManager.getValidationStatus(for: .topP),
+                width: 70
+            )
+        }
+    }
+}
+
+/// Individual parameter slider with validation feedback
+struct ParameterSliderView: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let format: String
+    let validationStatus: ValidationStatus
+    let width: CGFloat
+    
+    @State private var isEditing = false
+    @State private var showingTooltip = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // Title with validation indicator
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                
+                if validationStatus == .invalid {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.orange)
+                }
+            }
+            
+            // Slider and value display
+            HStack(spacing: 8) {
+                Slider(value: $value, in: range, step: step) { editing in
+                    isEditing = editing
+                }
+                .frame(width: width)
+                .accentColor(sliderColor)
+                
+                // Value display with validation styling
+                Text(String(format: format, value))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(valueColor)
+                    .frame(width: valueWidth, alignment: .trailing)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(valueBackgroundColor)
+                    .cornerRadius(4)
+            }
+        }
+        .onHover { hovering in
+            showingTooltip = hovering
+        }
+        .help(tooltipText)
+    }
+    
+    private var sliderColor: Color {
+        switch validationStatus {
+        case .valid:
+            return .accentColor
+        case .invalid:
+            return .orange
+        case .warning:
+            return .yellow
+        }
+    }
+    
+    private var valueColor: Color {
+        switch validationStatus {
+        case .valid:
+            return .secondary
+        case .invalid:
+            return .orange
+        case .warning:
+            return .yellow
+        }
+    }
+    
+    private var valueBackgroundColor: Color {
+        if isEditing {
+            return Color.accentColor.opacity(0.1)
+        } else if validationStatus == .invalid {
+            return Color.orange.opacity(0.1)
+        } else {
+            return Color.clear
+        }
+    }
+    
+    private var valueWidth: CGFloat {
+        switch title {
+        case "Temperature", "Top-P":
+            return 35
+        case "Max Tokens":
+            return 45
+        default:
+            return 40
+        }
+    }
+    
+    private var tooltipText: String {
+        switch title {
+        case "Temperature":
+            return "Controls randomness (0.0 = deterministic, 2.0 = very creative)"
+        case "Max Tokens":
+            return "Maximum number of tokens to generate"
+        case "Top-P":
+            return "Nucleus sampling threshold (0.0 = most likely tokens only)"
+        default:
+            return ""
+        }
+    }
+}
+
+/// System prompt dropdown for the bottom input area
+struct SystemPromptDropdownView: View {
+    @ObservedObject var parameterManager: ParameterManager
+    @State private var showingCustomPromptEditor = false
+    @State private var customPromptText = ""
+    
+    var body: some View {
+        Menu {
+            // Preset options
+            Section("Presets") {
+                ForEach(ParameterManager.systemPromptPresets) { preset in
+                    Button(action: {
+                        parameterManager.selectSystemPromptPreset(preset.name)
+                    }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(preset.name)
+                                    .font(.system(size: 13))
+                                
+                                Text(preset.description)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(2)
+                            }
+                            
+                            Spacer()
+                            
+                            if parameterManager.selectedPresetName == preset.name {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.accentColor)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Divider()
+            
+            // Custom prompt option
+            Button("Custom Prompt...") {
+                customPromptText = parameterManager.parameters.systemPrompt
+                showingCustomPromptEditor = true
+            }
+            
+            // Clear prompt option
+            if !parameterManager.parameters.systemPrompt.isEmpty {
+                Button("Clear Prompt") {
+                    parameterManager.selectSystemPromptPreset("Default")
+                }
+            }
+            
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "text.bubble")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                
+                Text(displayText)
+                    .font(.system(size: 13))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(tooltipText)
+        .sheet(isPresented: $showingCustomPromptEditor) {
+            CustomPromptEditorSheet(
+                promptText: $customPromptText,
+                onSave: { prompt in
+                    parameterManager.updateSystemPrompt(prompt)
+                }
+            )
+        }
+    }
+    
+    private var displayText: String {
+        if parameterManager.selectedPresetName == "Custom" {
+            return "Custom"
+        } else if parameterManager.selectedPresetName == "Default" {
+            return "System Prompt"
+        } else {
+            return parameterManager.selectedPresetName
+        }
+    }
+    
+    private var tooltipText: String {
+        if parameterManager.parameters.systemPrompt.isEmpty {
+            return "No system prompt set"
+        } else if parameterManager.selectedPresetName == "Custom" {
+            return "Custom system prompt: \(String(parameterManager.parameters.systemPrompt.prefix(100)))"
+        } else {
+            return ParameterManager.systemPromptPresets.first { $0.name == parameterManager.selectedPresetName }?.description ?? ""
+        }
+    }
+}
+
+/// Custom prompt editor sheet
+struct CustomPromptEditorSheet: View {
+    @Binding var promptText: String
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var editingText: String = ""
+    @State private var characterCount: Int = 0
+    
+    var body: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: 16) {
+                // Header
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Custom System Prompt")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("Define how the AI should behave and respond. This prompt will be sent with every message.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Text editor
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Prompt Text")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        Text("\(characterCount) characters")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    TextEditor(text: $editingText)
+                        .font(.system(size: 14, design: .default))
+                        .padding(8)
+                        .background(Color(NSColor.textBackgroundColor))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                        )
+                        .frame(minHeight: 200)
+                        .onChange(of: editingText) { newValue in
+                            characterCount = newValue.count
+                        }
+                }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("System Prompt")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(editingText)
+                        dismiss()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .frame(minWidth: 600, minHeight: 500)
+        .onAppear {
+            editingText = promptText
+            characterCount = promptText.count
+        }
+    }
+}
+
 struct ContentView: View {
     @State private var sidebarCollapsed = false
     @State private var workspacesExpanded = true
     @State private var filesExpanded = true
-    @State private var temperature: Double = 0.7
-    @State private var maxTokens: Double = 600
+    
+    // Parameter management
+    @StateObject private var parameterManager = ParameterManager()
+    @State private var showingSettings = false
     
     // Model management state
     @State private var currentModel: String = "No Model"
@@ -157,40 +914,34 @@ struct ContentView: View {
                         onModelAction: handleModelAction
                     )
                     
-                    // Temperature Slider
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Temperature")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        HStack {
-                            Slider(value: $temperature, in: 0...2.0, step: 0.1)
-                                .frame(width: 80)
-                            Text(String(format: "%.1f", temperature))
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .frame(width: 30, alignment: .trailing)
-                        }
-                    }
-                    
-                    // Max Tokens Slider
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Max Tokens")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        HStack {
-                            Slider(value: $maxTokens, in: 1...2048, step: 1)
-                                .frame(width: 80)
-                            Text("\(Int(maxTokens))")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .frame(width: 40, alignment: .trailing)
-                        }
-                    }
+                    // Parameter Controls
+                    ParameterControlsView(parameterManager: parameterManager)
                     
                     // Settings Gear
                     Menu {
-                        Button("Preferences") { }
+                        Button("Preferences...") { 
+                            showingSettings = true
+                        }
+                        
                         Divider()
+                        
+                        // Parameter presets submenu
+                        Menu("Parameter Presets") {
+                            ForEach(ParameterPreset.presets) { preset in
+                                Button(preset.name) {
+                                    parameterManager.loadPreset(preset)
+                                }
+                            }
+                            
+                            Divider()
+                            
+                            Button("Reset to Defaults") {
+                                parameterManager.resetToDefaults()
+                            }
+                        }
+                        
+                        Divider()
+                        
                         Button("About MLX Integration") { 
                             print("🧪 MLX Integration Status:")
                             if #available(macOS 13.0, *) {
@@ -229,7 +980,7 @@ struct ContentView: View {
                 )
                 
                 // Chat Interface
-                ChatView()
+                ChatView(parameterManager: parameterManager)
             }
         }
         .frame(minWidth: 800, minHeight: 600)
@@ -239,6 +990,9 @@ struct ContentView: View {
                     Image(systemName: "sidebar.left")
                 }
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(parameterManager: parameterManager)
         }
 
     }
@@ -633,10 +1387,10 @@ struct SimpleChatMessage: Identifiable {
 
 /// Main chat interface view that displays messages and handles user input
 struct ChatView: View {
+    @ObservedObject var parameterManager: ParameterManager
     @State private var messages: [SimpleChatMessage] = []
     @State private var messageText = ""
     @State private var isProcessing = false
-    @State private var systemPrompt = "Default"
     
     // File context state
     @State private var activeDocuments: [String] = ["document.pdf", "notes.txt"]
@@ -684,8 +1438,8 @@ struct ChatView: View {
             // Bottom Input Area
             ChatInputView(
                 messageText: $messageText,
-                systemPrompt: $systemPrompt,
                 isProcessing: $isProcessing,
+                parameterManager: parameterManager,
                 onSendMessage: sendMessage
             )
         }
@@ -719,10 +1473,15 @@ struct ChatView: View {
     }
     
     private func generateMockResponse(for input: String) -> String {
+        let systemPromptInfo = parameterManager.selectedPresetName != "Default" ? 
+            " (using \(parameterManager.selectedPresetName) system prompt)" : ""
+        
+        let parameterInfo = "Temperature: \(parameterManager.parameters.temperature), Max Tokens: \(parameterManager.parameters.maxTokens)"
+        
         let responses = [
-            "I understand your question about \"\(input)\". This is a mock response that will be replaced with actual AI inference in a future implementation.",
-            "Thank you for your message. I'm currently running in preview mode, so this is a simulated response to demonstrate the chat interface.",
-            "Based on your input \"\(input)\", I would provide a helpful response here. This interface is ready for integration with the actual inference engine."
+            "I understand your question about \"\(input)\"\(systemPromptInfo). This is a mock response that will be replaced with actual AI inference. Current parameters: \(parameterInfo)",
+            "Thank you for your message. I'm currently running in preview mode\(systemPromptInfo), so this is a simulated response to demonstrate the chat interface with parameters: \(parameterInfo)",
+            "Based on your input \"\(input)\"\(systemPromptInfo), I would provide a helpful response here. This interface is ready for integration with the actual inference engine. Parameters: \(parameterInfo)"
         ]
         return responses.randomElement() ?? "Mock response"
     }
@@ -899,8 +1658,8 @@ struct SimpleMessageBubbleView: View {
 /// Bottom input area for typing messages and configuring system prompts
 struct ChatInputView: View {
     @Binding var messageText: String
-    @Binding var systemPrompt: String
     @Binding var isProcessing: Bool
+    @ObservedObject var parameterManager: ParameterManager
     
     let onSendMessage: () -> Void
     
@@ -914,26 +1673,7 @@ struct ChatInputView: View {
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                 
-                Menu {
-                    Button("Default") { systemPrompt = "Default" }
-                    Button("Creative Writing") { systemPrompt = "Creative Writing" }
-                    Button("Code Assistant") { systemPrompt = "Code Assistant" }
-                    Button("Research Helper") { systemPrompt = "Research Helper" }
-                    Button("Technical Writer") { systemPrompt = "Technical Writer" }
-                    Button("Data Analyst") { systemPrompt = "Data Analyst" }
-                } label: {
-                    HStack {
-                        Text(systemPrompt)
-                            .font(.system(size: 12))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8))
-                    }
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(4)
-                }
+                SystemPromptDropdownView(parameterManager: parameterManager)
                 
                 Spacer()
             }
@@ -1216,5 +1956,216 @@ struct RoundedCorner: Shape {
         
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: - Settings View
+
+/// Basic settings view for parameter configuration
+struct SettingsView: View {
+    @ObservedObject var parameterManager: ParameterManager
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Parameter Settings")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("Configure how the AI model generates responses. Changes apply immediately to new messages.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+                
+                // Parameter presets
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Quick Presets")
+                        .font(.headline)
+                    
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
+                        ForEach(ParameterPreset.presets) { preset in
+                            PresetCardView(preset: preset, parameterManager: parameterManager)
+                        }
+                    }
+                }
+                
+                Divider()
+                
+                // Individual parameter controls
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Individual Parameters")
+                        .font(.headline)
+                    
+                    // Temperature
+                    ParameterDetailView(
+                        title: "Temperature",
+                        description: "Controls randomness in responses. Lower values make output more focused and deterministic, higher values make it more creative and varied.",
+                        value: Binding(
+                            get: { Double(parameterManager.parameters.temperature) },
+                            set: { parameterManager.updateTemperature(Float($0)) }
+                        ),
+                        range: Double(ParameterManager.temperatureRange.lowerBound)...Double(ParameterManager.temperatureRange.upperBound),
+                        step: 0.1,
+                        format: "%.1f",
+                        validationStatus: parameterManager.getValidationStatus(for: .temperature)
+                    )
+                    
+                    // Max Tokens
+                    ParameterDetailView(
+                        title: "Max Tokens",
+                        description: "Maximum number of tokens (words/word pieces) the model can generate in a single response.",
+                        value: Binding(
+                            get: { Double(parameterManager.parameters.maxTokens) },
+                            set: { parameterManager.updateMaxTokens(Int($0)) }
+                        ),
+                        range: Double(ParameterManager.maxTokensRange.lowerBound)...Double(ParameterManager.maxTokensRange.upperBound),
+                        step: 1,
+                        format: "%.0f",
+                        validationStatus: parameterManager.getValidationStatus(for: .maxTokens)
+                    )
+                    
+                    // Top-P
+                    ParameterDetailView(
+                        title: "Top-P (Nucleus Sampling)",
+                        description: "Limits token selection to the most probable tokens whose cumulative probability is below this threshold.",
+                        value: Binding(
+                            get: { Double(parameterManager.parameters.topP) },
+                            set: { parameterManager.updateTopP(Float($0)) }
+                        ),
+                        range: Double(ParameterManager.topPRange.lowerBound)...Double(ParameterManager.topPRange.upperBound),
+                        step: 0.05,
+                        format: "%.2f",
+                        validationStatus: parameterManager.getValidationStatus(for: .topP)
+                    )
+                }
+                
+                // Reset button
+                HStack {
+                    Spacer()
+                    
+                    Button("Reset to Defaults") {
+                        parameterManager.resetToDefaults()
+                    }
+                    .buttonStyle(.bordered)
+                }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .frame(minWidth: 600, minHeight: 500)
+    }
+}
+
+/// Preset card view
+struct PresetCardView: View {
+    let preset: ParameterPreset
+    @ObservedObject var parameterManager: ParameterManager
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(preset.name)
+                .font(.system(size: 14, weight: .medium))
+            
+            Text(preset.description)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Temp: \(preset.parameters.temperature, specifier: "%.1f"), Tokens: \(preset.parameters.maxTokens)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Button("Apply") {
+                parameterManager.loadPreset(preset)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(12)
+        .frame(height: 120)
+        .background(isCurrentPreset ? Color.accentColor.opacity(0.1) : Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isCurrentPreset ? Color.accentColor : Color(NSColor.separatorColor), lineWidth: 1)
+        )
+    }
+    
+    private var isCurrentPreset: Bool {
+        return parameterManager.parameters.temperature == preset.parameters.temperature &&
+               parameterManager.parameters.maxTokens == preset.parameters.maxTokens &&
+               parameterManager.parameters.topP == preset.parameters.topP
+    }
+}
+
+/// Detailed parameter control view
+struct ParameterDetailView: View {
+    let title: String
+    let description: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let format: String
+    let validationStatus: ValidationStatus
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 16, weight: .medium))
+                
+                if validationStatus == .invalid {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                }
+                
+                Spacer()
+                
+                Text(String(format: format, value))
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(validationStatus == .invalid ? .orange : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(6)
+            }
+            
+            Text(description)
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+            
+            HStack {
+                Text(String(format: format, range.lowerBound))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                
+                Slider(value: $value, in: range, step: step)
+                    .accentColor(validationStatus == .invalid ? .orange : .accentColor)
+                
+                Text(String(format: format, range.upperBound))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
     }
 }

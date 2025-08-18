@@ -3,8 +3,8 @@ import SwiftUI
 /// Bottom input area for typing messages and configuring system prompts
 struct ChatInputView: View {
     @Binding var messageText: String
-    @Binding var systemPrompt: String
     @Binding var isProcessing: Bool
+    @ObservedObject var parameterManager: ParameterManager
     
     let onSendMessage: () -> Void
     
@@ -18,26 +18,7 @@ struct ChatInputView: View {
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                 
-                Menu {
-                    Button("Default") { systemPrompt = "Default" }
-                    Button("Creative Writing") { systemPrompt = "Creative Writing" }
-                    Button("Code Assistant") { systemPrompt = "Code Assistant" }
-                    Button("Research Helper") { systemPrompt = "Research Helper" }
-                    Button("Technical Writer") { systemPrompt = "Technical Writer" }
-                    Button("Data Analyst") { systemPrompt = "Data Analyst" }
-                } label: {
-                    HStack {
-                        Text(systemPrompt)
-                            .font(.system(size: 12))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8))
-                    }
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(4)
-                }
+                SystemPromptDropdownView(parameterManager: parameterManager)
                 
                 Spacer()
             }
@@ -165,8 +146,8 @@ struct InputHint: View {
         
         ChatInputView(
             messageText: .constant(""),
-            systemPrompt: .constant("Default"),
             isProcessing: .constant(false),
+            parameterManager: ParameterManager(),
             onSendMessage: {}
         )
     }
