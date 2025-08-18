@@ -70,7 +70,7 @@
   - Write integration tests for inference functionality
   - _Requirements: 2.1, 4.1, 4.2_
 
-- [ ] 9. Model Management UI
+- [x] 9. Model Management UI
 
   - Create model dropdown in top toolbar showing current model (e.g., "Llama 3 8B Ollama")
   - Implement model browser sheet/popover accessible from dropdown

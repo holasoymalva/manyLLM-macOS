@@ -4,9 +4,18 @@ struct ContentView: View {
     @State private var sidebarCollapsed = false
     @State private var workspacesExpanded = true
     @State private var filesExpanded = true
-    @State private var selectedModel = "Llama 3 8B Ollama"
     @State private var temperature: Double = 0.7
     @State private var maxTokens: Double = 600
+    
+    // Model management state
+    @State private var currentModel: String = "No Model"
+    @State private var modelStatus: ModelStatus = .unloaded
+    @State private var isLoadingModel = false
+    @State private var loadingProgress: Double = 0.0
+    @State private var showingModelBrowser = false
+    @State private var availableModels: [MockModelInfo] = []
+    @State private var errorMessage: String?
+    @State private var showingError = false
 
     
     var body: some View {
@@ -139,23 +148,14 @@ struct ContentView: View {
                     Spacer()
                     
                     // Model Dropdown
-                    Menu {
-                        Button("Llama 3 8B Ollama") { selectedModel = "Llama 3 8B Ollama" }
-                        Button("GPT-4 Compatible") { selectedModel = "GPT-4 Compatible" }
-                        Button("Browse Models...") { }
-                    } label: {
-                        HStack {
-                            Text(selectedModel)
-                                .font(.system(size: 13))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10))
-                        }
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color(NSColor.controlBackgroundColor))
-                        .cornerRadius(6)
-                    }
+                    ModelDropdownView(
+                        currentModel: $currentModel,
+                        modelStatus: $modelStatus,
+                        isLoadingModel: $isLoadingModel,
+                        loadingProgress: $loadingProgress,
+                        showingModelBrowser: $showingModelBrowser,
+                        onModelAction: handleModelAction
+                    )
                     
                     // Temperature Slider
                     VStack(alignment: .leading, spacing: 2) {
@@ -242,6 +242,296 @@ struct ContentView: View {
         }
 
     }
+    
+    // MARK: - Model Management Methods
+    
+    private func handleModelAction(_ action: ModelAction) {
+        Task {
+            switch action {
+            case .loadModel(let modelName):
+                await loadModel(modelName)
+            case .unloadModel:
+                await unloadModel()
+            case .showBrowser:
+                showingModelBrowser = true
+            case .refreshModels:
+                await refreshAvailableModels()
+            }
+        }
+    }
+    
+    private func loadModel(_ modelName: String) async {
+        await MainActor.run {
+            isLoadingModel = true
+            loadingProgress = 0.0
+            modelStatus = .loading
+        }
+        
+        // Simulate model loading with progress
+        for i in 1...10 {
+            try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+            await MainActor.run {
+                loadingProgress = Double(i) / 10.0
+            }
+        }
+        
+        await MainActor.run {
+            currentModel = modelName
+            modelStatus = .loaded
+            isLoadingModel = false
+            loadingProgress = 0.0
+        }
+    }
+    
+    private func unloadModel() async {
+        await MainActor.run {
+            currentModel = "No Model"
+            modelStatus = .unloaded
+            isLoadingModel = false
+            loadingProgress = 0.0
+        }
+    }
+    
+    private func refreshAvailableModels() async {
+        // Simulate fetching models
+        await MainActor.run {
+            availableModels = createMockModels()
+        }
+    }
+    
+    private func createMockModels() -> [MockModelInfo] {
+        return [
+            MockModelInfo(name: "Llama 3 8B", size: "4.6 GB", status: .available),
+            MockModelInfo(name: "Mistral 7B", size: "3.8 GB", status: .available),
+            MockModelInfo(name: "CodeLlama 7B", size: "3.8 GB", status: .downloaded),
+            MockModelInfo(name: "Llama 3 70B", size: "38 GB", status: .available)
+        ]
+    }
+}
+
+// MARK: - Model Management Components
+
+/// Model dropdown component for the top toolbar
+struct ModelDropdownView: View {
+    @Binding var currentModel: String
+    @Binding var modelStatus: ModelStatus
+    @Binding var isLoadingModel: Bool
+    @Binding var loadingProgress: Double
+    @Binding var showingModelBrowser: Bool
+    let onModelAction: (ModelAction) -> Void
+    
+    var body: some View {
+        Menu {
+            // Current model section
+            if modelStatus == .loaded {
+                Section("Current Model") {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text(currentModel)
+                        Spacer()
+                        Text("Loaded")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Divider()
+                
+                Button("Unload Model") {
+                    onModelAction(.unloadModel)
+                }
+            } else {
+                Section("No Model Loaded") {
+                    Text("Select a model to get started")
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Divider()
+            
+            // Quick model selection
+            Section("Available Models") {
+                Button("Llama 3 8B") {
+                    onModelAction(.loadModel("Llama 3 8B"))
+                }
+                
+                Button("Mistral 7B") {
+                    onModelAction(.loadModel("Mistral 7B"))
+                }
+                
+                Button("CodeLlama 7B") {
+                    onModelAction(.loadModel("CodeLlama 7B"))
+                }
+            }
+            
+            Divider()
+            
+            // Model browser and actions
+            Button("Browse Models...") {
+                onModelAction(.showBrowser)
+            }
+            
+            Button("Refresh Models") {
+                onModelAction(.refreshModels)
+            }
+            
+        } label: {
+            HStack(spacing: 8) {
+                // Model status indicator
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+                
+                // Model name or loading state
+                if isLoadingModel {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Loading...")
+                            .font(.system(size: 13))
+                    }
+                } else {
+                    Text(currentModel)
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                }
+                
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .foregroundColor(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(6)
+            .overlay(
+                // Loading progress bar
+                loadingProgressOverlay,
+                alignment: .bottom
+            )
+        }
+        .sheet(isPresented: $showingModelBrowser) {
+            ModelBrowserSheet(
+                availableModels: createMockModels(),
+                onModelSelected: { modelName in
+                    onModelAction(.loadModel(modelName))
+                    showingModelBrowser = false
+                }
+            )
+        }
+    }
+    
+    private var statusColor: Color {
+        switch modelStatus {
+        case .unloaded:
+            return .secondary
+        case .loading:
+            return .orange
+        case .loaded:
+            return .green
+        case .error:
+            return .red
+        }
+    }
+    
+    @ViewBuilder
+    private var loadingProgressOverlay: some View {
+        if isLoadingModel && loadingProgress > 0 {
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(.blue.opacity(0.3))
+                    .frame(width: geometry.size.width * loadingProgress, height: 2)
+                    .animation(.easeInOut(duration: 0.2), value: loadingProgress)
+            }
+            .frame(height: 2)
+        }
+    }
+    
+    private func createMockModels() -> [MockModelInfo] {
+        return [
+            MockModelInfo(name: "Llama 3 8B", size: "4.6 GB", status: .available),
+            MockModelInfo(name: "Mistral 7B", size: "3.8 GB", status: .available),
+            MockModelInfo(name: "CodeLlama 7B", size: "3.8 GB", status: .downloaded),
+            MockModelInfo(name: "Llama 3 70B", size: "38 GB", status: .available)
+        ]
+    }
+}
+
+/// Simple model browser sheet
+struct ModelBrowserSheet: View {
+    let availableModels: [MockModelInfo]
+    let onModelSelected: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            List(availableModels, id: \.name) { model in
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.name)
+                            .font(.headline)
+                        
+                        Text(model.size)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(model.status == .downloaded ? "Load" : "Download") {
+                        if model.status == .downloaded {
+                            onModelSelected(model.name)
+                        } else {
+                            // TODO: Implement download
+                            onModelSelected(model.name)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                .padding(.vertical, 4)
+            }
+            .navigationTitle("Model Browser")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 600, minHeight: 400)
+    }
+}
+
+// MARK: - Supporting Types
+
+enum ModelStatus {
+    case unloaded
+    case loading
+    case loaded
+    case error
+}
+
+enum ModelAction {
+    case loadModel(String)
+    case unloadModel
+    case showBrowser
+    case refreshModels
+}
+
+struct MockModelInfo {
+    let name: String
+    let size: String
+    let status: MockModelStatus
+}
+
+enum MockModelStatus {
+    case available
+    case downloaded
+    case loading
 }
 
 #Preview {
@@ -502,6 +792,56 @@ struct WelcomeView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Processing indicator view shown while generating responses
+struct ProcessingIndicatorView: View {
+    @State private var animationPhase = 0.0
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            // Assistant avatar space
+            Circle()
+                .fill(Color.accentColor.opacity(0.1))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Image(systemName: "brain")
+                        .font(.system(size: 16))
+                        .foregroundColor(.accentColor)
+                )
+            
+            // Typing indicator
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 4) {
+                    ForEach(0..<3) { index in
+                        Circle()
+                            .fill(Color.secondary)
+                            .frame(width: 8, height: 8)
+                            .scaleEffect(animationPhase == Double(index) ? 1.2 : 0.8)
+                            .animation(
+                                .easeInOut(duration: 0.6)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(index) * 0.2),
+                                value: animationPhase
+                            )
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(16, corners: [.topLeft, .topRight, .bottomRight])
+                
+                Text("Assistant is thinking...")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer(minLength: 60)
+        }
+        .onAppear {
+            animationPhase = 0.0
+        }
     }
 }
 
@@ -776,41 +1116,6 @@ struct DocumentChip: View {
             return "doc"
         default:
             return "doc"
-        }
-    }
-}
-
-/// Processing indicator shown while waiting for response
-struct ProcessingIndicatorView: View {
-    @State private var animationPhase = 0
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 4) {
-                ForEach(0..<3) { index in
-                    Circle()
-                        .fill(Color.secondary)
-                        .frame(width: 6, height: 6)
-                        .opacity(animationPhase == index ? 1.0 : 0.3)
-                        .animation(
-                            .easeInOut(duration: 0.6)
-                            .repeatForever(autoreverses: false)
-                            .delay(Double(index) * 0.2),
-                            value: animationPhase
-                        )
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(16)
-            
-            Spacer()
-        }
-        .onAppear {
-            withAnimation {
-                animationPhase = 2
-            }
         }
     }
 }

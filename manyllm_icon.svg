@@ -29,7 +29,7 @@
 <feOffset dy="12"/>
 <feGaussianBlur stdDeviation="6"/>
 <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/>
-<feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 0.9895 0 0 0 0 0.9625 0 0 0 1 0"/>
+<feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 0.9895 0 0 0 0 0.9625 0 0 0 0.34 0"/>
 <feBlend mode="normal" in2="effect1_innerShadow_4901_27" result="effect2_innerShadow_4901_27"/>
 <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
 <feOffset dy="-6"/>

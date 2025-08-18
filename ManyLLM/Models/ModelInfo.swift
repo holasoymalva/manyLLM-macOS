@@ -9,15 +9,15 @@ struct ModelInfo: Codable, Identifiable, Equatable {
     let size: Int64
     let parameters: String
     let downloadURL: URL?
-    let localPath: URL?
-    let isLocal: Bool
-    let isLoaded: Bool
+    var localPath: URL?
+    var isLocal: Bool
+    var isLoaded: Bool
     let compatibility: ModelCompatibility
     let version: String?
     let license: String?
     let tags: [String]
     let createdAt: Date?
-    let updatedAt: Date?
+    var updatedAt: Date?
     
     init(
         id: String,
