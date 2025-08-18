@@ -263,3 +263,207 @@ extension RemoteModelRepositoryTests {
         }
     }
 }
+
+// MARK: - Model Discovery and Search Tests
+
+extension RemoteModelRepositoryTests {
+    
+    func testAdvancedModelSearch() async throws {
+        // Test advanced search with filters
+        let filters = ModelSearchFilters.compatibleOnly()
+        let compatibleModels = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        // All returned models should be compatible
+        let checker = ModelCompatibilityChecker()
+        for model in compatibleModels {
+            let result = checker.checkCompatibility(for: model)
+            XCTAssertEqual(result.compatibility, .fullyCompatible)
+        }
+    }
+    
+    func testModelCategoryFiltering() async throws {
+        // Test category-based filtering
+        let allModels = try await remoteRepository.getModelsByCategory(.all)
+        let localModels = try await remoteRepository.getModelsByCategory(.local)
+        let remoteModels = try await remoteRepository.getModelsByCategory(.remote)
+        let compatibleModels = try await remoteRepository.getModelsByCategory(.compatible)
+        let featuredModels = try await remoteRepository.getModelsByCategory(.featured)
+        
+        XCTAssertGreaterThanOrEqual(allModels.count, localModels.count + remoteModels.count)
+        
+        // Local models should all have isLocal = true
+        XCTAssertTrue(localModels.allSatisfy { $0.isLocal })
+        
+        // Remote models should all have isLocal = false
+        XCTAssertTrue(remoteModels.allSatisfy { !$0.isLocal })
+        
+        // Compatible models should all be fully compatible
+        let checker = ModelCompatibilityChecker()
+        for model in compatibleModels {
+            let result = checker.checkCompatibility(for: model)
+            XCTAssertEqual(result.compatibility, .fullyCompatible)
+        }
+        
+        // Featured models should have featured or popular tags
+        XCTAssertTrue(featuredModels.allSatisfy { model in
+            model.tags.contains("featured") || model.tags.contains("popular")
+        })
+    }
+    
+    func testModelSearchWithParameterFilters() async throws {
+        // Test parameter size filtering
+        var filters = ModelSearchFilters()
+        filters.maxParameters = 10.0 // Small models only
+        
+        let smallModels = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        for model in smallModels {
+            let parameterCount = extractParameterCount(from: model.parameters)
+            XCTAssertLessThanOrEqual(parameterCount, 10.0)
+        }
+        
+        // Test large models
+        filters = ModelSearchFilters()
+        filters.minParameters = 30.0 // Large models only
+        
+        let largeModels = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        for model in largeModels {
+            let parameterCount = extractParameterCount(from: model.parameters)
+            XCTAssertGreaterThanOrEqual(parameterCount, 30.0)
+        }
+    }
+    
+    func testModelSearchWithSizeFilters() async throws {
+        // Test file size filtering
+        var filters = ModelSearchFilters()
+        filters.maxSize = 5_000_000_000 // 5GB max
+        
+        let smallSizeModels = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        for model in smallSizeModels {
+            XCTAssertLessThanOrEqual(model.size, 5_000_000_000)
+        }
+    }
+    
+    func testModelSearchWithAuthorFilter() async throws {
+        // Test author filtering
+        var filters = ModelSearchFilters()
+        filters.author = "Meta"
+        
+        let metaModels = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        for model in metaModels {
+            XCTAssertEqual(model.author.lowercased(), "meta")
+        }
+    }
+    
+    func testModelSearchWithTagFilters() async throws {
+        // Test tag filtering
+        var filters = ModelSearchFilters()
+        filters.tags = ["instruct", "chat"]
+        
+        let instructChatModels = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        for model in instructChatModels {
+            XCTAssertTrue(model.tags.contains { $0.lowercased() == "instruct" })
+            XCTAssertTrue(model.tags.contains { $0.lowercased() == "chat" })
+        }
+    }
+    
+    func testModelSorting() async throws {
+        // Test sorting by name
+        var filters = ModelSearchFilters()
+        filters.sortBy = .name
+        filters.sortAscending = true
+        
+        let sortedByName = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        if sortedByName.count > 1 {
+            for i in 0..<(sortedByName.count - 1) {
+                XCTAssertLessThanOrEqual(sortedByName[i].name, sortedByName[i + 1].name)
+            }
+        }
+        
+        // Test sorting by size
+        filters.sortBy = .size
+        let sortedBySize = try await remoteRepository.searchModels(query: "", filters: filters)
+        
+        if sortedBySize.count > 1 {
+            for i in 0..<(sortedBySize.count - 1) {
+                XCTAssertLessThanOrEqual(sortedBySize[i].size, sortedBySize[i + 1].size)
+            }
+        }
+    }
+    
+    func testModelCompatibilityChecking() {
+        let checker = ModelCompatibilityChecker()
+        
+        // Test with different model types
+        let compatibleModel = ModelInfo(
+            id: "test-compatible",
+            name: "Test Compatible Model",
+            author: "Test",
+            description: "A test model that should be compatible",
+            size: 1_000_000_000, // 1GB
+            parameters: "7B",
+            compatibility: .fullyCompatible,
+            tags: ["test", "compatible"]
+        )
+        
+        let result = checker.checkCompatibility(for: compatibleModel)
+        XCTAssertEqual(result.compatibility, .fullyCompatible)
+        XCTAssertTrue(result.isCompatible)
+        
+        // Test with large model that might have memory warnings
+        let largeModel = ModelInfo(
+            id: "test-large",
+            name: "Test Large Model",
+            author: "Test",
+            description: "A test model that is very large",
+            size: 100_000_000_000, // 100GB
+            parameters: "175B",
+            compatibility: .fullyCompatible,
+            tags: ["test", "large"]
+        )
+        
+        let largeResult = checker.checkCompatibility(for: largeModel)
+        // Should have warnings about memory usage
+        XCTAssertTrue(largeResult.hasWarnings || largeResult.compatibility != .fullyCompatible)
+    }
+    
+    func testModelDetailInformation() async throws {
+        // Test that models have comprehensive detail information
+        let models = try await remoteRepository.fetchAvailableModels()
+        
+        for model in models {
+            // Basic information should be present
+            XCTAssertFalse(model.id.isEmpty)
+            XCTAssertFalse(model.name.isEmpty)
+            XCTAssertFalse(model.author.isEmpty)
+            XCTAssertFalse(model.description.isEmpty)
+            XCTAssertFalse(model.parameters.isEmpty)
+            XCTAssertGreaterThan(model.size, 0)
+            
+            // Compatibility should be set
+            XCTAssertNotEqual(model.compatibility, .unknown)
+            
+            // Should have some tags
+            XCTAssertFalse(model.tags.isEmpty)
+        }
+    }
+    
+    private func extractParameterCount(from parameterString: String) -> Double {
+        let cleanString = parameterString.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if cleanString.hasSuffix("B") {
+            return Double(cleanString.dropLast()) ?? 0
+        } else if cleanString.hasSuffix("M") {
+            return (Double(cleanString.dropLast()) ?? 0) / 1000
+        } else if cleanString.hasSuffix("K") {
+            return (Double(cleanString.dropLast()) ?? 0) / 1_000_000
+        }
+        
+        return 0
+    }
+}

@@ -8,6 +8,12 @@ protocol ModelRepository {
     /// Search for models matching the given query
     func searchModels(query: String) async throws -> [ModelInfo]
     
+    /// Search for models with advanced filters
+    func searchModels(query: String, filters: ModelSearchFilters) async throws -> [ModelInfo]
+    
+    /// Get models by category
+    func getModelsByCategory(_ category: ModelCategory) async throws -> [ModelInfo]
+    
     /// Download a model to local storage
     func downloadModel(_ model: ModelInfo, progressHandler: @escaping (Double) -> Void) async throws -> ModelInfo
     

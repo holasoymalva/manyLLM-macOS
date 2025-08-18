@@ -78,14 +78,55 @@ extension RemoteModelRepository {
     }
     
     func searchModels(query: String) async throws -> [ModelInfo] {
+        return try await searchModels(query: query, filters: ModelSearchFilters())
+    }
+    
+    func searchModels(query: String, filters: ModelSearchFilters = ModelSearchFilters()) async throws -> [ModelInfo] {
         let allModels = try await fetchAvailableModels()
-        let lowercaseQuery = query.lowercased()
         
-        return allModels.filter { model in
-            model.name.lowercased().contains(lowercaseQuery) ||
-            model.author.lowercased().contains(lowercaseQuery) ||
-            model.description.lowercased().contains(lowercaseQuery) ||
-            model.tags.contains { $0.lowercased().contains(lowercaseQuery) }
+        // Apply text search
+        var filteredModels = allModels
+        if !query.isEmpty {
+            let lowercaseQuery = query.lowercased()
+            filteredModels = filteredModels.filter { model in
+                model.name.lowercased().contains(lowercaseQuery) ||
+                model.author.lowercased().contains(lowercaseQuery) ||
+                model.description.lowercased().contains(lowercaseQuery) ||
+                model.tags.contains { $0.lowercased().contains(lowercaseQuery) } ||
+                model.parameters.lowercased().contains(lowercaseQuery)
+            }
+        }
+        
+        // Apply filters
+        filteredModels = applyFilters(to: filteredModels, filters: filters)
+        
+        // Apply sorting
+        filteredModels = applySorting(to: filteredModels, sortBy: filters.sortBy, ascending: filters.sortAscending)
+        
+        return filteredModels
+    }
+    
+    func getModelsByCategory(_ category: ModelCategory) async throws -> [ModelInfo] {
+        let allModels = try await fetchAvailableModels()
+        
+        switch category {
+        case .all:
+            return allModels
+        case .local:
+            return allModels.filter { $0.isLocal }
+        case .remote:
+            return allModels.filter { !$0.isLocal }
+        case .downloading:
+            let downloadingIds = Set(activeDownloads.keys)
+            return allModels.filter { downloadingIds.contains($0.id) }
+        case .compatible:
+            return allModels.filter { model in
+                let checker = ModelCompatibilityChecker()
+                let result = checker.checkCompatibility(for: model)
+                return result.compatibility == .fullyCompatible
+            }
+        case .featured:
+            return allModels.filter { $0.tags.contains("featured") || $0.tags.contains("popular") }
         }
     }
     
@@ -168,6 +209,117 @@ extension RemoteModelRepository {
         
         activeDownloads.removeValue(forKey: modelId)
         downloadProgressHandlers.removeValue(forKey: modelId)
+    }
+}
+
+// MARK: - Search and Filtering
+
+private extension RemoteModelRepository {
+    
+    func applyFilters(to models: [ModelInfo], filters: ModelSearchFilters) -> [ModelInfo] {
+        var filteredModels = models
+        
+        // Filter by compatibility
+        if let compatibility = filters.compatibility {
+            let checker = ModelCompatibilityChecker()
+            filteredModels = filteredModels.filter { model in
+                let result = checker.checkCompatibility(for: model)
+                return result.compatibility == compatibility
+            }
+        }
+        
+        // Filter by parameter size
+        if let minParameters = filters.minParameters {
+            filteredModels = filteredModels.filter { model in
+                extractParameterCount(from: model.parameters) >= minParameters
+            }
+        }
+        
+        if let maxParameters = filters.maxParameters {
+            filteredModels = filteredModels.filter { model in
+                extractParameterCount(from: model.parameters) <= maxParameters
+            }
+        }
+        
+        // Filter by size
+        if let minSize = filters.minSize {
+            filteredModels = filteredModels.filter { $0.size >= minSize }
+        }
+        
+        if let maxSize = filters.maxSize {
+            filteredModels = filteredModels.filter { $0.size <= maxSize }
+        }
+        
+        // Filter by author
+        if let author = filters.author {
+            filteredModels = filteredModels.filter { $0.author.lowercased() == author.lowercased() }
+        }
+        
+        // Filter by tags
+        if !filters.tags.isEmpty {
+            filteredModels = filteredModels.filter { model in
+                filters.tags.allSatisfy { tag in
+                    model.tags.contains { $0.lowercased() == tag.lowercased() }
+                }
+            }
+        }
+        
+        // Filter by license
+        if let license = filters.license {
+            filteredModels = filteredModels.filter { model in
+                model.license?.lowercased().contains(license.lowercased()) == true
+            }
+        }
+        
+        return filteredModels
+    }
+    
+    func applySorting(to models: [ModelInfo], sortBy: ModelSortOption, ascending: Bool) -> [ModelInfo] {
+        let sortedModels: [ModelInfo]
+        
+        switch sortBy {
+        case .name:
+            sortedModels = models.sorted { $0.name < $1.name }
+        case .author:
+            sortedModels = models.sorted { $0.author < $1.author }
+        case .size:
+            sortedModels = models.sorted { $0.size < $1.size }
+        case .parameters:
+            sortedModels = models.sorted { 
+                extractParameterCount(from: $0.parameters) < extractParameterCount(from: $1.parameters)
+            }
+        case .dateCreated:
+            sortedModels = models.sorted { 
+                ($0.createdAt ?? Date.distantPast) < ($1.createdAt ?? Date.distantPast)
+            }
+        case .dateUpdated:
+            sortedModels = models.sorted { 
+                ($0.updatedAt ?? Date.distantPast) < ($1.updatedAt ?? Date.distantPast)
+            }
+        case .compatibility:
+            let checker = ModelCompatibilityChecker()
+            sortedModels = models.sorted { model1, model2 in
+                let result1 = checker.checkCompatibility(for: model1)
+                let result2 = checker.checkCompatibility(for: model2)
+                return result1.compatibility > result2.compatibility
+            }
+        }
+        
+        return ascending ? sortedModels : sortedModels.reversed()
+    }
+    
+    func extractParameterCount(from parameterString: String) -> Double {
+        let cleanString = parameterString.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if cleanString.hasSuffix("B") {
+            return Double(cleanString.dropLast()) ?? 0
+        } else if cleanString.hasSuffix("M") {
+            return (Double(cleanString.dropLast()) ?? 0) / 1000
+        } else if cleanString.hasSuffix("K") {
+            return (Double(cleanString.dropLast()) ?? 0) / 1_000_000
+        }
+        
+        return 0
     }
 }
 

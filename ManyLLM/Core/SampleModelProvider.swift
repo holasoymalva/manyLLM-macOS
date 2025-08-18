@@ -14,10 +14,10 @@ class SampleModelProvider {
             size: 4_600_000_000, // ~4.6GB
             parameters: "8B",
             downloadURL: URL(string: "https://httpbin.org/bytes/1048576"), // 1MB test file
-            compatibility: .llamaCpp,
+            compatibility: .fullyCompatible,
             version: "3.0",
             license: "Custom",
-            tags: ["instruct", "chat", "general", "meta"],
+            tags: ["instruct", "chat", "general", "meta", "featured"],
             createdAt: Date().addingTimeInterval(-86400 * 30) // 30 days ago
         ),
         
@@ -29,10 +29,10 @@ class SampleModelProvider {
             size: 3_800_000_000, // ~3.8GB
             parameters: "7B",
             downloadURL: URL(string: "https://httpbin.org/bytes/2097152"), // 2MB test file
-            compatibility: .llamaCpp,
+            compatibility: .fullyCompatible,
             version: "1.0",
             license: "Custom",
-            tags: ["code", "programming", "python", "javascript"],
+            tags: ["code", "programming", "python", "javascript", "featured"],
             createdAt: Date().addingTimeInterval(-86400 * 60) // 60 days ago
         ),
         
@@ -44,10 +44,10 @@ class SampleModelProvider {
             size: 4_100_000_000, // ~4.1GB
             parameters: "7B",
             downloadURL: URL(string: "https://httpbin.org/bytes/3145728"), // 3MB test file
-            compatibility: .llamaCpp,
+            compatibility: .fullyCompatible,
             version: "0.2",
             license: "Apache 2.0",
-            tags: ["instruct", "efficient", "fast", "mistral"],
+            tags: ["instruct", "efficient", "fast", "mistral", "popular"],
             createdAt: Date().addingTimeInterval(-86400 * 45) // 45 days ago
         ),
         
@@ -59,10 +59,10 @@ class SampleModelProvider {
             size: 2_200_000_000, // ~2.2GB
             parameters: "3.8B",
             downloadURL: URL(string: "https://httpbin.org/bytes/1572864"), // 1.5MB test file
-            compatibility: .llamaCpp,
+            compatibility: .fullyCompatible,
             version: "3.0",
             license: "MIT",
-            tags: ["small", "efficient", "reasoning", "microsoft"],
+            tags: ["small", "efficient", "reasoning", "microsoft", "popular"],
             createdAt: Date().addingTimeInterval(-86400 * 15) // 15 days ago
         ),
         
@@ -74,10 +74,10 @@ class SampleModelProvider {
             size: 1_400_000_000, // ~1.4GB
             parameters: "2B",
             downloadURL: URL(string: "https://httpbin.org/bytes/1048576"), // 1MB test file
-            compatibility: .llamaCpp,
+            compatibility: .fullyCompatible,
             version: "1.1",
             license: "Gemma Terms of Use",
-            tags: ["lightweight", "efficient", "google", "gemma"],
+            tags: ["lightweight", "efficient", "google", "gemma", "small"],
             createdAt: Date().addingTimeInterval(-86400 * 20) // 20 days ago
         ),
         
@@ -90,7 +90,7 @@ class SampleModelProvider {
             size: 40_000_000_000, // ~40GB
             parameters: "70B",
             downloadURL: URL(string: "https://httpbin.org/bytes/10485760"), // 10MB test file
-            compatibility: .llamaCpp,
+            compatibility: .partiallyCompatible,
             version: "3.0",
             license: "Custom",
             tags: ["large", "instruct", "reasoning", "meta", "premium"],
@@ -108,11 +108,72 @@ class SampleModelProvider {
             downloadURL: nil,
             localPath: URL(fileURLWithPath: "/tmp/test_model.bin"),
             isLocal: true,
-            compatibility: .llamaCpp,
+            compatibility: .fullyCompatible,
             version: "1.0",
             license: "Test",
             tags: ["test", "local", "sample"],
             createdAt: Date().addingTimeInterval(-86400 * 5) // 5 days ago
+        ),
+        
+        // Additional models for testing different compatibility levels
+        ModelInfo(
+            id: "claude-3-haiku",
+            name: "Claude 3 Haiku",
+            author: "Anthropic",
+            description: "A fast and efficient model from Anthropic's Claude 3 family. Optimized for speed while maintaining good reasoning capabilities.",
+            size: 3_200_000_000, // ~3.2GB
+            parameters: "8B",
+            downloadURL: URL(string: "https://httpbin.org/bytes/2097152"), // 2MB test file
+            compatibility: .partiallyCompatible,
+            version: "3.0",
+            license: "Custom",
+            tags: ["fast", "efficient", "reasoning", "anthropic", "claude"],
+            createdAt: Date().addingTimeInterval(-86400 * 10) // 10 days ago
+        ),
+        
+        ModelInfo(
+            id: "gpt-4-turbo",
+            name: "GPT-4 Turbo",
+            author: "OpenAI",
+            description: "Advanced language model with improved efficiency and capabilities. Note: This is a placeholder for testing incompatible models.",
+            size: 50_000_000_000, // ~50GB (hypothetical)
+            parameters: "175B",
+            downloadURL: URL(string: "https://httpbin.org/status/404"), // Will fail
+            compatibility: .incompatible,
+            version: "4.0",
+            license: "Proprietary",
+            tags: ["large", "advanced", "openai", "proprietary"],
+            createdAt: Date().addingTimeInterval(-86400 * 40) // 40 days ago
+        ),
+        
+        ModelInfo(
+            id: "unknown-model",
+            name: "Experimental Model X",
+            author: "Research Lab",
+            description: "An experimental model with unknown compatibility. Use for testing compatibility checking features.",
+            size: 7_500_000_000, // ~7.5GB
+            parameters: "12B",
+            downloadURL: URL(string: "https://httpbin.org/bytes/5242880"), // 5MB test file
+            compatibility: .unknown,
+            version: "0.1-alpha",
+            license: "Research Only",
+            tags: ["experimental", "research", "unknown", "alpha"],
+            createdAt: Date().addingTimeInterval(-86400 * 3) // 3 days ago
+        ),
+        
+        ModelInfo(
+            id: "multilingual-model",
+            name: "Universal Language Model",
+            author: "Global AI",
+            description: "A multilingual model supporting over 100 languages with strong translation and cross-lingual understanding capabilities.",
+            size: 15_000_000_000, // ~15GB
+            parameters: "22B",
+            downloadURL: URL(string: "https://httpbin.org/bytes/8388608"), // 8MB test file
+            compatibility: .fullyCompatible,
+            version: "2.1",
+            license: "Apache 2.0",
+            tags: ["multilingual", "translation", "large", "global", "featured"],
+            createdAt: Date().addingTimeInterval(-86400 * 18) // 18 days ago
         )
     ]
     
@@ -175,29 +236,4 @@ class SampleModelProvider {
     }
 }
 
-/// Model compatibility enumeration
-enum ModelCompatibility: String, Codable, CaseIterable {
-    case llamaCpp = "llama.cpp"
-    case ggml = "GGML"
-    case pytorch = "PyTorch"
-    case onnx = "ONNX"
-    case coreML = "Core ML"
-    case unknown = "Unknown"
-    
-    var displayName: String {
-        return rawValue
-    }
-    
-    var isSupported: Bool {
-        switch self {
-        case .llamaCpp, .ggml:
-            return true
-        default:
-            return false
-        }
-    }
-    
-    var incompatible: Bool {
-        return !isSupported
-    }
-}
+// Note: ModelCompatibility is now defined in ModelCompatibility.swift

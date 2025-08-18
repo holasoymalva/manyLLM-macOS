@@ -443,18 +443,18 @@ struct ParameterControlsView: View {
             )
             
             // Top-P Slider (Advanced parameter, shown in compact form)
-            ParameterSliderView(
-                title: "Top-P",
-                value: Binding(
-                    get: { Double(parameterManager.parameters.topP) },
-                    set: { parameterManager.updateTopP(Float($0)) }
-                ),
-                range: Double(ParameterManager.topPRange.lowerBound)...Double(ParameterManager.topPRange.upperBound),
-                step: 0.05,
-                format: "%.2f",
-                validationStatus: parameterManager.getValidationStatus(for: .topP),
-                width: 70
-            )
+            // ParameterSliderView(
+            //     title: "Top-P",
+            //     value: Binding(
+            //         get: { Double(parameterManager.parameters.topP) },
+            //         set: { parameterManager.updateTopP(Float($0)) }
+            //     ),
+            //     range: Double(ParameterManager.topPRange.lowerBound)...Double(ParameterManager.topPRange.upperBound),
+            //     step: 0.05,
+            //     format: "%.2f",
+            //     validationStatus: parameterManager.getValidationStatus(for: .topP),
+            //     width: 70
+            // )
         }
     }
 }

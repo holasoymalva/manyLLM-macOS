@@ -9,6 +9,10 @@ struct ModelBrowserView: View {
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var selectedCategory: ModelCategory = .all
+    @State private var searchFilters = ModelSearchFilters()
+    @State private var showingFilters = false
+    @State private var selectedModel: ModelInfo?
+    @State private var showingModelDetail = false
     
     private let localRepository: LocalModelRepository
     private let remoteRepository: RemoteModelRepository
@@ -58,13 +62,22 @@ struct ModelBrowserView: View {
                     .background(Color(NSColor.controlBackgroundColor))
                     .cornerRadius(8)
                     
-                    // Category filter
-                    Picker("Category", selection: $selectedCategory) {
-                        ForEach(ModelCategory.allCases, id: \.self) { category in
-                            Text(category.displayName).tag(category)
+                    // Category filter and advanced filters
+                    HStack {
+                        Picker("Category", selection: $selectedCategory) {
+                            ForEach(ModelCategory.allCases, id: \.self) { category in
+                                Label(category.displayName, systemImage: category.systemImage).tag(category)
+                            }
                         }
+                        .pickerStyle(.menu)
+                        
+                        Spacer()
+                        
+                        Button("Filters") {
+                            showingFilters = true
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .pickerStyle(.segmented)
                 }
                 .padding()
                 
@@ -105,6 +118,10 @@ struct ModelBrowserView: View {
                                     },
                                     onCancel: { modelId in
                                         cancelDownload(modelId)
+                                    },
+                                    onShowDetails: { model in
+                                        selectedModel = model
+                                        showingModelDetail = true
                                     }
                                 )
                             }
@@ -160,6 +177,14 @@ struct ModelBrowserView: View {
         .task {
             await loadModels()
         }
+        .sheet(isPresented: $showingFilters) {
+            ModelSearchFiltersView(filters: $searchFilters)
+        }
+        .sheet(isPresented: $showingModelDetail) {
+            if let model = selectedModel {
+                ModelDetailView(model: model, downloadManager: downloadManager)
+            }
+        }
         .alert("Error", isPresented: $showingError) {
             Button("OK") { }
         } message: {
@@ -170,16 +195,7 @@ struct ModelBrowserView: View {
     private var filteredModels: [ModelInfo] {
         var models = availableModels
         
-        // Filter by search text
-        if !searchText.isEmpty {
-            models = models.filter { model in
-                model.name.localizedCaseInsensitiveContains(searchText) ||
-                model.author.localizedCaseInsensitiveContains(searchText) ||
-                model.description.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-        
-        // Filter by category
+        // Filter by category first
         switch selectedCategory {
         case .all:
             break
@@ -190,9 +206,132 @@ struct ModelBrowserView: View {
         case .downloading:
             let downloadingIds = Set(downloadManager.activeDownloads.keys)
             models = models.filter { downloadingIds.contains($0.id) }
+        case .compatible:
+            let checker = ModelCompatibilityChecker()
+            models = models.filter { model in
+                let result = checker.checkCompatibility(for: model)
+                return result.compatibility == .fullyCompatible
+            }
+        case .featured:
+            models = models.filter { $0.tags.contains("featured") || $0.tags.contains("popular") }
         }
         
-        return models.sorted { $0.name < $1.name }
+        // Apply search text filter
+        if !searchText.isEmpty {
+            let lowercaseQuery = searchText.lowercased()
+            models = models.filter { model in
+                model.name.lowercased().contains(lowercaseQuery) ||
+                model.author.lowercased().contains(lowercaseQuery) ||
+                model.description.lowercased().contains(lowercaseQuery) ||
+                model.tags.contains { $0.lowercased().contains(lowercaseQuery) } ||
+                model.parameters.lowercased().contains(lowercaseQuery)
+            }
+        }
+        
+        // Apply advanced filters
+        models = applyAdvancedFilters(to: models)
+        
+        // Apply sorting
+        return applySorting(to: models)
+    }
+    
+    private func applyAdvancedFilters(to models: [ModelInfo]) -> [ModelInfo] {
+        var filteredModels = models
+        
+        // Filter by compatibility
+        if let compatibility = searchFilters.compatibility {
+            let checker = ModelCompatibilityChecker()
+            filteredModels = filteredModels.filter { model in
+                let result = checker.checkCompatibility(for: model)
+                return result.compatibility == compatibility
+            }
+        }
+        
+        // Filter by parameter size
+        if let minParameters = searchFilters.minParameters {
+            filteredModels = filteredModels.filter { model in
+                extractParameterCount(from: model.parameters) >= minParameters
+            }
+        }
+        
+        if let maxParameters = searchFilters.maxParameters {
+            filteredModels = filteredModels.filter { model in
+                extractParameterCount(from: model.parameters) <= maxParameters
+            }
+        }
+        
+        // Filter by size
+        if let minSize = searchFilters.minSize {
+            filteredModels = filteredModels.filter { $0.size >= minSize }
+        }
+        
+        if let maxSize = searchFilters.maxSize {
+            filteredModels = filteredModels.filter { $0.size <= maxSize }
+        }
+        
+        // Filter by author
+        if let author = searchFilters.author {
+            filteredModels = filteredModels.filter { $0.author.lowercased() == author.lowercased() }
+        }
+        
+        // Filter by tags
+        if !searchFilters.tags.isEmpty {
+            filteredModels = filteredModels.filter { model in
+                searchFilters.tags.allSatisfy { tag in
+                    model.tags.contains { $0.lowercased() == tag.lowercased() }
+                }
+            }
+        }
+        
+        return filteredModels
+    }
+    
+    private func applySorting(to models: [ModelInfo]) -> [ModelInfo] {
+        let sortedModels: [ModelInfo]
+        
+        switch searchFilters.sortBy {
+        case .name:
+            sortedModels = models.sorted { $0.name < $1.name }
+        case .author:
+            sortedModels = models.sorted { $0.author < $1.author }
+        case .size:
+            sortedModels = models.sorted { $0.size < $1.size }
+        case .parameters:
+            sortedModels = models.sorted { 
+                extractParameterCount(from: $0.parameters) < extractParameterCount(from: $1.parameters)
+            }
+        case .dateCreated:
+            sortedModels = models.sorted { 
+                ($0.createdAt ?? Date.distantPast) < ($1.createdAt ?? Date.distantPast)
+            }
+        case .dateUpdated:
+            sortedModels = models.sorted { 
+                ($0.updatedAt ?? Date.distantPast) < ($1.updatedAt ?? Date.distantPast)
+            }
+        case .compatibility:
+            let checker = ModelCompatibilityChecker()
+            sortedModels = models.sorted { model1, model2 in
+                let result1 = checker.checkCompatibility(for: model1)
+                let result2 = checker.checkCompatibility(for: model2)
+                return result1.compatibility > result2.compatibility
+            }
+        }
+        
+        return searchFilters.sortAscending ? sortedModels : sortedModels.reversed()
+    }
+    
+    private func extractParameterCount(from parameterString: String) -> Double {
+        let cleanString = parameterString.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if cleanString.hasSuffix("B") {
+            return Double(cleanString.dropLast()) ?? 0
+        } else if cleanString.hasSuffix("M") {
+            return (Double(cleanString.dropLast()) ?? 0) / 1000
+        } else if cleanString.hasSuffix("K") {
+            return (Double(cleanString.dropLast()) ?? 0) / 1_000_000
+        }
+        
+        return 0
     }
     
     @MainActor
@@ -239,6 +378,7 @@ struct ModelCard: View {
     @ObservedObject var downloadManager: ModelDownloadManager
     let onDownload: (ModelInfo) -> Void
     let onCancel: (String) -> Void
+    let onShowDetails: (ModelInfo) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -322,7 +462,7 @@ struct ModelCard: View {
                         .buttonStyle(.borderedProminent)
                         
                         Button("Details") {
-                            // Show model details
+                            onShowDetails(model)
                         }
                         .buttonStyle(.bordered)
                     }
