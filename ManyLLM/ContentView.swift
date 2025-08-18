@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 // MARK: - Core Data Models
 
@@ -993,6 +994,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(parameterManager: parameterManager)
+        }
+        .sheet(isPresented: $showingModelBrowser) {
+            SimpleModelBrowserView()
         }
 
     }
@@ -2168,4 +2172,260 @@ struct ParameterDetailView: View {
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(8)
     }
+}
+
+// MARK: - Simple Model Browser for Testing
+
+/// Simple model browser view for testing download functionality
+struct SimpleModelBrowserView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var sampleModels: [SampleModelInfo] = []
+    @State private var searchText = ""
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 16) {
+                // Header
+                HStack {
+                    Text("Model Browser")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Spacer()
+                    
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+                .padding()
+                
+                // Search
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    
+                    TextField("Search models...", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .padding(.horizontal)
+                
+                // Model list
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(filteredModels) { model in
+                            SimpleModelCard(model: model)
+                        }
+                    }
+                    .padding()
+                }
+                
+                Spacer()
+            }
+        }
+        .frame(minWidth: 800, minHeight: 600)
+        .onAppear {
+            loadSampleModels()
+        }
+    }
+    
+    private var filteredModels: [SampleModelInfo] {
+        if searchText.isEmpty {
+            return sampleModels
+        } else {
+            return sampleModels.filter { model in
+                model.name.localizedCaseInsensitiveContains(searchText) ||
+                model.author.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    private func loadSampleModels() {
+        sampleModels = [
+            SampleModelInfo(
+                name: "Llama 3 8B Instruct",
+                author: "Meta",
+                description: "A powerful 8B parameter instruction-tuned model",
+                size: "4.6 GB",
+                parameters: "8B",
+                isLocal: false
+            ),
+            SampleModelInfo(
+                name: "CodeLlama 7B",
+                author: "Meta",
+                description: "Specialized code generation model",
+                size: "3.8 GB",
+                parameters: "7B",
+                isLocal: false
+            ),
+            SampleModelInfo(
+                name: "Mistral 7B Instruct",
+                author: "Mistral AI",
+                description: "High-quality instruction following model",
+                size: "4.1 GB",
+                parameters: "7B",
+                isLocal: false
+            ),
+            SampleModelInfo(
+                name: "Local Test Model",
+                author: "Test",
+                description: "A test model that's already downloaded",
+                size: "500 MB",
+                parameters: "1B",
+                isLocal: true
+            )
+        ]
+    }
+}
+
+/// Simple model card for testing
+struct SimpleModelCard: View {
+    let model: SampleModelInfo
+    @State private var isDownloading = false
+    @State private var downloadProgress: Double = 0.0
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.name)
+                        .font(.headline)
+                    
+                    Text("by \(model.author)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                // Status
+                if model.isLocal {
+                    Label("Local", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                } else if isDownloading {
+                    Label("Downloading", systemImage: "arrow.down.circle")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                } else {
+                    Label("Available", systemImage: "cloud")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            // Description
+            Text(model.description)
+                .font(.body)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+            
+            // Details
+            HStack {
+                Label(model.parameters, systemImage: "cpu")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Label(model.size, systemImage: "externaldrive")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Download progress or button
+            if isDownloading {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("\(Int(downloadProgress * 100))%")
+                            .font(.caption)
+                        
+                        Spacer()
+                        
+                        Button("Cancel") {
+                            isDownloading = false
+                            downloadProgress = 0.0
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                    }
+                    
+                    ProgressView(value: downloadProgress)
+                        .progressViewStyle(LinearProgressViewStyle())
+                }
+            } else if model.isLocal {
+                HStack {
+                    Button("Open") {
+                        print("Opening model: \(model.name)")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    
+                    Button("Delete") {
+                        print("Deleting model: \(model.name)")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    Spacer()
+                }
+            } else {
+                HStack {
+                    Button("Download") {
+                        startDownload()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    
+                    Button("Details") {
+                        print("Showing details for: \(model.name)")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    Spacer()
+                }
+            }
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+        )
+    }
+    
+    private func startDownload() {
+        isDownloading = true
+        downloadProgress = 0.0
+        
+        // Simulate download progress
+        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            downloadProgress += 0.02
+            
+            if downloadProgress >= 1.0 {
+                timer.invalidate()
+                isDownloading = false
+                downloadProgress = 0.0
+                print("✅ Download completed for: \(model.name)")
+            }
+        }
+    }
+}
+
+/// Sample model info for testing
+struct SampleModelInfo: Identifiable {
+    let id = UUID()
+    let name: String
+    let author: String
+    let description: String
+    let size: String
+    let parameters: String
+    let isLocal: Bool
 }

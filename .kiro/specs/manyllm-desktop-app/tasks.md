@@ -106,7 +106,7 @@
   - Write tests comparing MLX and llama.cpp performance
   - _Requirements: 2.1, 3.4_
 
-- [ ] 13. Model Download Infrastructure
+- [x] 13. Model Download Infrastructure
 
   - Implement network model repository with URLSession
   - Create download progress tracking and UI indicators

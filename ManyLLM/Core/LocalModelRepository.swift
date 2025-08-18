@@ -109,33 +109,14 @@ class LocalModelRepository: ModelRepository {
     }
     
     func verifyModelIntegrity(_ model: ModelInfo) async throws -> Bool {
-        guard let localPath = model.localPath else {
-            throw ManyLLMError.modelNotFound("Model path not found")
+        let verifier = ModelIntegrityVerifier()
+        let result = try await verifier.verifyModel(model)
+        
+        if !result.isValid {
+            logger.warning("Model integrity verification failed: \(result.summary)")
         }
         
-        guard fileManager.fileExists(atPath: localPath.path) else {
-            throw ManyLLMError.modelNotFound("Model file does not exist at path: \(localPath.path)")
-        }
-        
-        // Check if file is readable
-        guard fileManager.isReadableFile(atPath: localPath.path) else {
-            throw ManyLLMError.storageError("Model file is not readable")
-        }
-        
-        // Verify file size matches expected size
-        do {
-            let attributes = try fileManager.attributesOfItem(atPath: localPath.path)
-            if let fileSize = attributes[.size] as? Int64 {
-                if fileSize != model.size {
-                    logger.warning("Model file size mismatch. Expected: \(model.size), Actual: \(fileSize)")
-                    return false
-                }
-            }
-        } catch {
-            throw ManyLLMError.storageError("Failed to read model file attributes: \(error.localizedDescription)")
-        }
-        
-        return true
+        return result.isValid
     }
     
     func getDownloadProgress(for modelId: String) -> Double? {
